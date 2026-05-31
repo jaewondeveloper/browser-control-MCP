@@ -1,9 +1,8 @@
 import type { Locator, Page } from "playwright";
-import { botMoveTo, botPressAt, ensureCursorOnPage, getCursorPosition } from "./virtual-cursor.js";
+import { botMoveTo, botPressAt, ensureCursorOnPage } from "./virtual-cursor.js";
 
 export { botMoveTo };
 
-/** Viewport center — default gaze point between actions */
 export async function viewportCenter(page: Page): Promise<{ x: number; y: number }> {
   const vp = page.viewportSize() ?? { width: 1280, height: 800 };
   return { x: vp.width / 2, y: vp.height / 2 };
@@ -15,7 +14,6 @@ export async function centerOfLocator(locator: Locator): Promise<{ x: number; y:
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-/** Every bot action: glide cursor to target, then optional click animation + Playwright click */
 export async function botActAt(
   page: Page,
   x: number,
@@ -44,20 +42,7 @@ export async function botActOnLocator(
   return c;
 }
 
-/** After navigation — enter from top-left then sweep to content area */
+/** Page loaded — keep cursor where it was; only ensure overlay exists */
 export async function botEnterPage(page: Page): Promise<void> {
   await ensureCursorOnPage(page);
-  await page.evaluate(() => {
-    const c = window.__agentVirtualCursor;
-    if (!c) return;
-    return c.moveTo(32, 32, 400);
-  }).catch(() => {});
-  const center = await viewportCenter(page);
-  await botMoveTo(page, center.x * 0.55, center.y * 0.45);
-}
-
-export async function botIdleGaze(page: Page): Promise<void> {
-  const c = await viewportCenter(page);
-  const pos = await getCursorPosition(page);
-  await botMoveTo(page, c.x + (pos.x > c.x ? -80 : 80), c.y);
 }

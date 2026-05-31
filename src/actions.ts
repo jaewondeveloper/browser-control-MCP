@@ -4,7 +4,6 @@ import {
   botActAt,
   botActOnLocator,
   botEnterPage,
-  botIdleGaze,
   botMoveTo,
   centerOfLocator,
   viewportCenter,
@@ -58,7 +57,7 @@ export async function reload() {
 
 export async function snapshot() {
   const p = await getPage();
-  await botIdleGaze(p);
+  await ensureCursorOnPage(p);
   return captureAccessibilitySnapshot(p);
 }
 
@@ -70,7 +69,7 @@ export async function getPageInfo() {
 
 export async function waitMs(ms: number) {
   const p = await getPage();
-  await botIdleGaze(p);
+  await ensureCursorOnPage(p);
   await p.waitForTimeout(Math.min(Math.max(0, ms), 120_000));
 }
 
@@ -85,7 +84,7 @@ export async function waitFor(opts: {
   if (opts.selector) await p.locator(opts.selector).first().waitFor({ state: "visible", timeout });
   if (opts.text) await p.getByText(opts.text, { exact: false }).first().waitFor({ state: "visible", timeout });
   if (opts.urlIncludes) await p.waitForURL((u) => u.toString().includes(opts.urlIncludes!), { timeout });
-  await botIdleGaze(p);
+  await ensureCursorOnPage(p);
 }
 
 export async function clickRef(
@@ -216,7 +215,7 @@ export async function typeText(text: string, submit = false) {
 
 export async function pressKey(key: string) {
   const p = await getPage();
-  await botIdleGaze(p);
+  await ensureCursorOnPage(p);
   await p.keyboard.press(key);
 }
 
@@ -250,7 +249,7 @@ export async function scrollToRef(ref: string) {
 
 export async function evaluate(expression: string) {
   const p = await getPage();
-  await botIdleGaze(p);
+  await ensureCursorOnPage(p);
   return p.evaluate(({ expr }) => {
     try {
       const fn = new Function(`return (${expr})`);

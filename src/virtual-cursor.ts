@@ -3,12 +3,32 @@
  */
 export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 (function () {
+  if (window.__agentVirtualCursor) {
+    window.__agentVirtualCursor.show();
+    return;
+  }
+
   const CURSOR_ID = "__agent_virtual_cursor__";
   const STYLE_ID = "__agent_virtual_cursor_style__";
   const RIPPLE_CLASS = "__agent_click_ripple__";
+  const POS_KEY = "__agent_cursor_pos__";
 
-  document.getElementById(CURSOR_ID)?.remove();
-  document.getElementById(STYLE_ID)?.remove();
+  function loadPos() {
+    try {
+      const raw = sessionStorage.getItem(POS_KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (typeof p.x === "number" && typeof p.y === "number") return p;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function savePos(x, y) {
+    try {
+      sessionStorage.setItem(POS_KEY, JSON.stringify({ x: x, y: y }));
+    } catch (e) {}
+  }
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -74,13 +94,22 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 
   let animFrame = null;
   let moving = false;
-  let currentX = 48;
-  let currentY = 48;
+  const saved = loadPos();
+  let currentX = saved ? saved.x : Math.min(120, window.innerWidth * 0.35);
+  let currentY = saved ? saved.y : Math.min(120, window.innerHeight * 0.35);
 
   function applyPos(x, y) {
     root.style.transform = "translate3d(" + Math.round(x) + "px," + Math.round(y) + "px,0)";
     currentX = x;
     currentY = y;
+    savePos(x, y);
+  }
+
+  function setInstant(x, y) {
+    if (animFrame) cancelAnimationFrame(animFrame);
+    animFrame = null;
+    moving = false;
+    applyPos(x, y);
   }
 
   applyPos(currentX, currentY);
@@ -191,10 +220,15 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     pressAt,
     showClick,
     show,
+    setInstant,
     isMoving,
     getPosition: () => ({ x: currentX, y: currentY }),
   };
 })();
+`;
+
+export const CURSOR_SHOW_SCRIPT = `
+(() => { window.__agentVirtualCursor?.show(); })();
 `;
 
 export function moveDurationForDistance(
@@ -214,8 +248,26 @@ function easeSmooth(t: number): number {
 }
 
 export async function ensureCursorOnPage(page: import("playwright").Page): Promise<void> {
+  const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
+
+  const exists = await page.evaluate(() => !!window.__agentVirtualCursor).catch(() => false);
+
+  if (exists) {
+    await page.evaluate(CURSOR_SHOW_SCRIPT).catch(() => {});
+    return;
+  }
+
   await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT).catch(() => {});
-  await page.evaluate(() => window.__agentVirtualCursor?.show()).catch(() => {});
+
+  if (hasRecordedPosition()) {
+    const pos = getRecordedCursorPosition();
+    await page
+      .evaluate(
+        ({ x, y }) => window.__agentVirtualCursor?.setInstant(x, y),
+        pos
+      )
+      .catch(() => {});
+  }
 }
 
 export async function getCursorPosition(
@@ -257,6 +309,9 @@ export async function botMoveTo(
 
   await movePromise;
   await page.mouse.move(x, y);
+
+  const { recordCursorPosition } = await import("./cursor-state.js");
+  recordCursorPosition(x, y);
 }
 
 export async function botPressAt(page: import("playwright").Page, x: number, y: number): Promise<void> {
@@ -292,6 +347,7 @@ declare global {
       pressAt: (x: number, y: number) => Promise<void>;
       showClick: (x: number, y: number) => Promise<void>;
       show: () => void;
+      setInstant: (x: number, y: number) => void;
       isMoving: () => boolean;
       getPosition: () => { x: number; y: number };
     };
