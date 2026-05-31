@@ -1,5 +1,7 @@
 # browser-control-mcp
 
+https://github.com/jaewondeveloper/browser-control-MCP
+
 에이전트가 **MCP 도구만**으로 브라우저를 조작합니다. 별도 `.mjs` 스크립트는 필요 없습니다.
 
 ## 핵심
