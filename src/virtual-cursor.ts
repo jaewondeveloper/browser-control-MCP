@@ -3,9 +3,13 @@
  */
 export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 (function () {
-  if (window.__agentVirtualCursor) {
+  const existingEl = document.getElementById("__agent_virtual_cursor__");
+  if (window.__agentVirtualCursor && existingEl) {
     window.__agentVirtualCursor.show();
     return;
+  }
+  if (window.__agentVirtualCursor && !existingEl) {
+    delete window.__agentVirtualCursor;
   }
 
   const CURSOR_ID = "__agent_virtual_cursor__";
@@ -34,15 +38,16 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   style.id = STYLE_ID;
   style.textContent = \`
     #\${CURSOR_ID} {
-      position: fixed;
-      left: 0;
-      top: 0;
-      width: 32px;
-      height: 32px;
-      pointer-events: none;
-      z-index: 2147483647;
-      opacity: 1;
-      visibility: visible;
+      position: fixed !important;
+      left: 0 !important;
+      top: 0 !important;
+      width: 32px !important;
+      height: 32px !important;
+      pointer-events: none !important;
+      z-index: 2147483647 !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      display: block !important;
       will-change: transform;
       filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35));
     }
@@ -224,11 +229,43 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     isMoving,
     getPosition: () => ({ x: currentX, y: currentY }),
   };
+
+  if (!window.__agentCursorGuardActive) {
+    window.__agentCursorGuardActive = true;
+    setInterval(function () {
+      var el = document.getElementById(CURSOR_ID);
+      if (el) {
+        el.style.setProperty("opacity", "1", "important");
+        el.style.setProperty("visibility", "visible", "important");
+        el.style.setProperty("display", "block", "important");
+        el.style.setProperty("z-index", "2147483647", "important");
+      }
+      window.__agentVirtualCursor?.show();
+    }, 350);
+  }
 })();
 `;
 
 export const CURSOR_SHOW_SCRIPT = `
-(() => { window.__agentVirtualCursor?.show(); })();
+(() => {
+  var el = document.getElementById("__agent_virtual_cursor__");
+  if (el) {
+    el.style.setProperty("opacity", "1", "important");
+    el.style.setProperty("visibility", "visible", "important");
+    el.style.setProperty("z-index", "2147483647", "important");
+  }
+  window.__agentVirtualCursor?.show();
+})();
+`;
+
+export const CURSOR_GUARD_BOOT = `
+(() => {
+  if (!document.getElementById("__agent_virtual_cursor__")) {
+    return "need-install";
+  }
+  window.__agentVirtualCursor?.show();
+  return "ok";
+})();
 `;
 
 export function moveDurationForDistance(
@@ -250,24 +287,22 @@ function easeSmooth(t: number): number {
 export async function ensureCursorOnPage(page: import("playwright").Page): Promise<void> {
   const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
 
-  const exists = await page.evaluate(() => !!window.__agentVirtualCursor).catch(() => false);
+  const boot = await page.evaluate(CURSOR_GUARD_BOOT).catch(() => "need-install");
 
-  if (exists) {
-    await page.evaluate(CURSOR_SHOW_SCRIPT).catch(() => {});
-    return;
+  if (boot === "need-install" || boot !== "ok") {
+    await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT).catch(() => {});
+    if (hasRecordedPosition()) {
+      const pos = getRecordedCursorPosition();
+      await page
+        .evaluate(
+          ({ x, y }) => window.__agentVirtualCursor?.setInstant(x, y),
+          pos
+        )
+        .catch(() => {});
+    }
   }
 
-  await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT).catch(() => {});
-
-  if (hasRecordedPosition()) {
-    const pos = getRecordedCursorPosition();
-    await page
-      .evaluate(
-        ({ x, y }) => window.__agentVirtualCursor?.setInstant(x, y),
-        pos
-      )
-      .catch(() => {});
-  }
+  await page.evaluate(CURSOR_SHOW_SCRIPT).catch(() => {});
 }
 
 export async function getCursorPosition(
@@ -312,6 +347,7 @@ export async function botMoveTo(
 
   const { recordCursorPosition } = await import("./cursor-state.js");
   recordCursorPosition(x, y);
+  await ensureCursorOnPage(page);
 }
 
 export async function botPressAt(page: import("playwright").Page, x: number, y: number): Promise<void> {

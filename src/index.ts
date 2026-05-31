@@ -28,7 +28,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.4.0",
+    version: "0.4.1",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -300,11 +300,15 @@ server.tool(
 
 server.tool(
   "browser_type",
-  "Type text; cursor at focused field. submit=true presses Enter.",
-  { text: z.string(), submit: z.boolean().optional() },
+  "Type text character-by-character; cursor on field. submit=true presses Enter. delayMs=90 default.",
+  {
+    text: z.string(),
+    submit: z.boolean().optional(),
+    delayMs: z.number().optional(),
+  },
   async (args) => {
-    await act.typeText(args.text, args.submit ?? false);
-    return { content: [{ type: "text", text: "Typed." }] };
+    await act.typeText(args.text, args.submit ?? false, args.delayMs ?? 90);
+    return { content: [{ type: "text", text: `Typed: ${args.text}` }] };
   }
 );
 

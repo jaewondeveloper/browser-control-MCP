@@ -214,8 +214,9 @@ export async function fillRef(ref: string, value: string) {
   await loc.fill(value);
 }
 
-export async function typeText(text: string, submit = false) {
+export async function typeText(text: string, submit = false, delayMs = 90) {
   const p = await getPage();
+  await ensureCursorOnPage(p);
   const focused = await p.evaluate(() => {
     const el = document.activeElement;
     if (!el || el === document.body) return null;
@@ -227,7 +228,9 @@ export async function typeText(text: string, submit = false) {
     const c = await viewportCenter(p);
     await botMoveTo(p, c.x, c.y);
   }
-  await p.keyboard.type(text, { delay: 45 });
+  await ensureCursorOnPage(p);
+  await p.keyboard.type(text, { delay: Math.max(40, delayMs) });
+  await ensureCursorOnPage(p);
   if (submit) await p.keyboard.press("Enter");
 }
 
