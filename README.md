@@ -1,5 +1,6 @@
 # browser-control-mcp
 
+https://camo.githubusercontent.com/27f4ce9acfadac90055f535ae568c101cdba23c245ed69f50de49a71333fbbbc/68747470733a2f2f62616467652e6d6370782e646576
 https://github.com/jaewondeveloper/browser-control-MCP
 
 에이전트가 **MCP 도구만**으로 브라우저를 조작합니다. 별도 `.mjs` 스크립트는 필요 없습니다.
