@@ -1,23 +1,14 @@
 #!/usr/bin/env node
 /**
- * Always loads the latest dist build (avoids stale MCP Node cache).
+ * MCP entry — runs dist in THIS process so Cursor stdio stays connected.
+ * (Do not spawn a child: that breaks MCP JSON-RPC on stdin/stdout.)
  */
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+process.chdir(root);
+
 const entry = path.join(root, "dist", "index.js");
-
-console.error(`[browser-control-mcp] launcher → ${entry}`);
-
-const child = spawn(process.execPath, [entry], {
-  stdio: "inherit",
-  cwd: root,
-  env: { ...process.env, BROWSER_CONTROL_LAUNCHER: "run-mcp.mjs" },
-});
-
-child.on("exit", (code, signal) => {
-  if (signal) process.kill(process.pid, signal);
-  process.exit(code ?? 0);
-});
+await import(pathToFileURL(entry).href);

@@ -6,7 +6,7 @@ import { BROWSER_CATALOG } from "./browsers.js";
 import { CURSOR_BUILD_ID } from "./cursor-build.js";
 import * as act from "./actions.js";
 
-const MCP_VERSION = "0.6.5";
+const MCP_VERSION = "0.6.6";
 
 const browserKindSchema = z.enum(["chromium", "chrome", "edge", "firefox"]);
 
