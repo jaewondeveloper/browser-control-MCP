@@ -8,22 +8,26 @@ import * as act from "./actions.js";
 const browserKindSchema = z.enum(["chromium", "chrome", "edge", "firefox"]);
 
 const AGENT_INSTRUCTIONS = `You control a real browser ONLY via browser_* MCP tools below.
-NEVER create or run .mjs/.js helper scripts in the project — all automation goes through these tools.
+NEVER create or run .mjs/.js helper scripts — all automation goes through these tools.
 
-Dev / website testing (default ON):
-- Blue edge vignette + "BOT 조작 중" banner + input lock (user cannot click the page).
-- browser_dev_start — open localhost dev server URL with dev mode preset.
-- browser_set_dev_mode — toggle lock, vignette, fast motion.
-- browser_ready — fast "page is usable" check (prefer over full snapshot on heavy sites like Naver).
-- browser_snapshot quick:true — smaller ref tree for faster confirmation.
+## REQUIRED workflow (DOM refs, not screenshots)
+1. browser_navigate / browser_dev_start — open page.
+2. browser_ready — optional fast load check.
+3. browser_snapshot (quick:true on heavy sites) — read the HTML/ref tree. Use refs from the "interactive (flat)" section for buttons/links.
+4. browser_click / browser_fill_ref / browser_hover — ONLY with refs from the latest snapshot (or browser_click_selector when ref unavailable).
+5. After each navigation or click that changes the page → browser_snapshot again, then pick new refs.
+6. When the task is finished → browser_close (MANDATORY — always close the browser window).
 
-Workflow:
-1. browser_dev_start or browser_navigate — visible window; BOT cursor + dev overlay immediately.
-2. browser_ready — confirm DOM ready (optional selector/text).
-3. browser_snapshot quick:true first; full snapshot only when needed.
-4. browser_click / browser_click_selector / browser_click_text / browser_fill_ref.
-5. browser_screenshot to verify.
-6. New tabs auto-focus; browser_tabs to list/switch.`;
+## FORBIDDEN unless the user explicitly asks
+- browser_screenshot — do NOT use for finding elements or verifying clicks. Use browser_snapshot + browser_get_page_info instead.
+
+## Dev overlay (default ON)
+Blue vignette, "BOT 조작 중", input lock. browser_set_dev_mode to toggle.
+
+## Cursor
+Classic blue pointer + blue BOT badge (not red/yellow).
+
+New tabs auto-focus; browser_tabs to list/switch.`;
 
 function clickReply(label: string, tabNote?: string) {
   const extra = tabNote ? `\n${tabNote}` : "";
@@ -33,7 +37,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.6.1",
+    version: "0.6.2",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -146,7 +150,7 @@ server.tool(
 
 server.tool(
   "browser_snapshot",
-  "Page tree with refs. quick:true = faster, fewer nodes (use on Naver/heavy pages).",
+  "DOM/ref tree for clicks. ALWAYS use before browser_click. Includes flat button/link list. quick:true on heavy sites. Do NOT use browser_screenshot instead.",
   { quick: z.boolean().optional() },
   async (args) => {
     const yaml = await act.snapshot(args.quick ?? false);
@@ -239,7 +243,7 @@ server.tool(
 
 server.tool(
   "browser_click",
-  "Click element by ref from browser_snapshot. Smooth cursor + click animation.",
+  "Click by ref from latest browser_snapshot only. Re-snapshot after page changes.",
   {
     ref: z.string(),
     offsetX: z.number().optional(),
@@ -437,7 +441,7 @@ server.tool(
 
 server.tool(
   "browser_screenshot",
-  "PNG screenshot (BOT cursor visible in image).",
+  "PNG capture. ONLY when user explicitly requests a screenshot — never for finding elements.",
   { fullPage: z.boolean().optional() },
   async (args) => {
     const b64 = await act.screenshotBase64(args.fullPage ?? false);
@@ -450,15 +454,30 @@ server.tool(
   }
 );
 
-server.tool("browser_close", "Close browser.", {}, async () => {
-  await act.closeSession();
-  return { content: [{ type: "text", text: "Closed." }] };
-});
+server.tool(
+  "browser_close",
+  "Close browser window. REQUIRED when automation task is done.",
+  {},
+  async () => {
+    await act.closeSession();
+    return { content: [{ type: "text", text: "Browser closed." }] };
+  }
+);
+
+server.tool(
+  "browser_done",
+  "Alias for browser_close — call when finished so the window is not left open.",
+  {},
+  async () => {
+    await act.closeSession();
+    return { content: [{ type: "text", text: "Done. Browser closed." }] };
+  }
+);
 
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("browser-control-mcp v0.6 — BOT cursor + dev overlay");
+  console.error("browser-control-mcp v0.6.2 — snapshot-first, blue cursor");
 }
 
 main().catch((err) => {

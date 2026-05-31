@@ -10,6 +10,7 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   const STYLE_ID = "__agent_virtual_cursor_style__";
   const RIPPLE_CLASS = "__agent_click_ripple__";
   const POS_KEY = "__agent_cursor_pos__";
+  const CURSOR_VER = "classic-blue-v2";
 
   function loadPos() {
     try {
@@ -29,13 +30,12 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   }
 
   const existingEl = document.getElementById(CURSOR_ID);
-  if (window.__agentVirtualCursor && existingEl) {
+  const upToDate = existingEl && existingEl.getAttribute("data-cursor-ver") === CURSOR_VER;
+  if (window.__agentVirtualCursor && upToDate) {
     window.__agentVirtualCursor.show();
     return;
   }
-  if (window.__agentVirtualCursor && !existingEl) {
-    delete window.__agentVirtualCursor;
-  }
+  if (window.__agentVirtualCursor) delete window.__agentVirtualCursor;
 
   document.getElementById(STYLE_ID)?.remove();
   document.getElementById(CURSOR_ID)?.remove();
@@ -98,6 +98,7 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 
   const root = document.createElement("div");
   root.id = CURSOR_ID;
+  root.setAttribute("data-cursor-ver", CURSOR_VER);
   root.innerHTML = \`
     <svg class="pointer" viewBox="0 0 24 24">
       <path d="M5 3L19 12L11 13L9 21L5 3Z" fill="#3B82F6" stroke="#1D4ED8" stroke-width="1.2"/>
@@ -286,8 +287,14 @@ export async function ensureCursorOnPage(page: import("playwright").Page): Promi
   const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
 
   const boot = await page.evaluate(CURSOR_GUARD_BOOT).catch(() => "need-install");
+  const stale = await page
+    .evaluate(() => {
+      const el = document.getElementById("__agent_virtual_cursor__");
+      return !el || el.getAttribute("data-cursor-ver") !== "classic-blue-v2";
+    })
+    .catch(() => true);
 
-  if (boot !== "ok") {
+  if (boot !== "ok" || stale) {
     await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT).catch(() => {});
     if (hasRecordedPosition()) {
       const pos = getRecordedCursorPosition();

@@ -2,6 +2,14 @@ import type { Page } from "playwright";
 
 export type RefMeta = { selector: string };
 
+type SnapNode = {
+  role: string;
+  name: string;
+  tag: string;
+  selector: string;
+  children: SnapNode[];
+};
+
 let refCounter = 0;
 const refStore = new Map<string, RefMeta>();
 
@@ -26,12 +34,12 @@ export async function captureAccessibilitySnapshot(
   resetRefStore();
   const quick = options.quick ?? false;
 
-  const tree = await page.evaluate((quickMode) => {
+  const result = await page.evaluate((quickMode) => {
     const limits = {
-      maxDepth: quickMode ? 7 : 14,
-      maxNodes: quickMode ? 100 : 400,
-      pruneWideAt: quickMode ? 3 : 6,
-      maxSiblings: quickMode ? 24 : 80,
+      maxDepth: quickMode ? 10 : 14,
+      maxNodes: quickMode ? 180 : 400,
+      pruneWideAt: quickMode ? 4 : 6,
+      maxSiblings: quickMode ? 48 : 80,
     };
     let nodeCount = 0;
     type NodeOut = {
@@ -175,12 +183,36 @@ export async function captureAccessibilitySnapshot(
 
     const root = document.body;
     const out = walk(root, 0);
-    return out ? [out] : [];
+    const tree = out ? [out] : [];
+
+    const flat: NodeOut[] = [];
+    const flatLimit = quickMode ? 80 : 120;
+    const seen = new Set<string>();
+    const flatSel =
+      'button, a[href], input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="tab"]';
+    for (const el of document.querySelectorAll(flatSel)) {
+      if (!shouldInclude(el)) continue;
+      const selector = cssPath(el);
+      if (seen.has(selector)) continue;
+      seen.add(selector);
+      flat.push({
+        role: roleOf(el),
+        name: nameOf(el),
+        tag: el.tagName.toLowerCase(),
+        selector,
+        children: [],
+      });
+      if (flat.length >= flatLimit) break;
+    }
+
+    return { tree, flat };
   }, quick);
 
   const lines: string[] = [];
+  const treeNodes = result.tree;
+  const flatNodes = result.flat;
 
-  function format(nodes: typeof tree, depth: number): void {
+  function format(nodes: SnapNode[], depth: number): void {
     for (const n of nodes) {
       const ref = `e${++refCounter}`;
       refStore.set(ref, { selector: n.selector });
@@ -191,7 +223,19 @@ export async function captureAccessibilitySnapshot(
     }
   }
 
-  format(tree, 0);
+  format(treeNodes, 0);
+
+  if (flatNodes.length) {
+    lines.push("");
+    lines.push("# interactive (flat — use ref for browser_click)");
+    for (const n of flatNodes) {
+      const ref = `e${++refCounter}`;
+      refStore.set(ref, { selector: n.selector });
+      const label = n.name ? `${n.role} "${n.name}"` : n.role;
+      lines.push(`- ${label} [ref=${ref}] <${n.tag}>`);
+    }
+  }
+
   return lines.length ? lines.join("\n") : "(no interactive elements found)";
 }
 
