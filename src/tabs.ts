@@ -1,6 +1,7 @@
 import type { BrowserContext, Page } from "playwright";
 import { setActivePage, getSession } from "./browser-manager-session.js";
-import { ensureCursorOnPage, spawnCursorImmediately } from "./virtual-cursor.js";
+import { ensureBotOverlay } from "./bot-overlay.js";
+import { spawnCursorImmediately } from "./virtual-cursor.js";
 
 export type TabInfo = {
   index: number;
@@ -31,7 +32,7 @@ export async function focusPage(page: Page): Promise<void> {
   setActivePage(page);
   await page.bringToFront().catch(() => {});
   await spawnCursorImmediately(page);
-  void page.waitForLoadState("domcontentloaded", { timeout: 20_000 }).then(() => ensureCursorOnPage(page));
+  await ensureBotOverlay(page);
 }
 
 export function attachTabWatcher(context: BrowserContext): void {
@@ -39,7 +40,11 @@ export function attachTabWatcher(context: BrowserContext): void {
     if (autoFocusNewTabs) setActivePage(newPage);
     void newPage.bringToFront().catch(() => {});
     void spawnCursorImmediately(newPage);
-    newPage.on("domcontentloaded", () => void spawnCursorImmediately(newPage));
+    void ensureBotOverlay(newPage);
+    newPage.on("domcontentloaded", () => {
+      void spawnCursorImmediately(newPage);
+      void ensureBotOverlay(newPage);
+    });
   };
 
   context.on("page", onNewPage);

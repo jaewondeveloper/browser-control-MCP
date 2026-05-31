@@ -14,10 +14,26 @@ export function getRefStore(): Map<string, RefMeta> {
   return refStore;
 }
 
-export async function captureAccessibilitySnapshot(page: Page): Promise<string> {
-  resetRefStore();
+export type SnapshotOptions = {
+  /** Fewer nodes — use before full browser_snapshot when checking page state */
+  quick?: boolean;
+};
 
-  const tree = await page.evaluate(() => {
+export async function captureAccessibilitySnapshot(
+  page: Page,
+  options: SnapshotOptions = {}
+): Promise<string> {
+  resetRefStore();
+  const quick = options.quick ?? false;
+
+  const tree = await page.evaluate((quickMode) => {
+    const limits = {
+      maxDepth: quickMode ? 7 : 14,
+      maxNodes: quickMode ? 100 : 400,
+      pruneWideAt: quickMode ? 3 : 6,
+      maxSiblings: quickMode ? 24 : 80,
+    };
+    let nodeCount = 0;
     type NodeOut = {
       role: string;
       name: string;
@@ -124,14 +140,30 @@ export async function captureAccessibilitySnapshot(page: Page): Promise<string> 
     }
 
     function walk(el: Element, depth: number): NodeOut | null {
+      if (nodeCount >= limits.maxNodes) return null;
+      if (depth > limits.maxDepth && !shouldInclude(el)) return null;
+
+      const rawChildren = Array.from(el.children);
+      let childrenToWalk = rawChildren;
+      if (depth >= limits.pruneWideAt && rawChildren.length > limits.maxSiblings) {
+        const picked: Element[] = [];
+        for (const c of rawChildren) {
+          if (shouldInclude(c)) picked.push(c);
+          if (picked.length >= limits.maxSiblings) break;
+        }
+        childrenToWalk = picked.length ? picked : rawChildren.slice(0, limits.maxSiblings);
+      }
+
       const kids: NodeOut[] = [];
-      for (const child of Array.from(el.children)) {
+      for (const child of childrenToWalk) {
+        if (nodeCount >= limits.maxNodes) break;
         const sub = walk(child, depth + 1);
         if (sub) kids.push(sub);
       }
 
       if (!shouldInclude(el) && kids.length === 0) return null;
 
+      nodeCount++;
       return {
         role: roleOf(el),
         name: nameOf(el),
@@ -144,7 +176,7 @@ export async function captureAccessibilitySnapshot(page: Page): Promise<string> 
     const root = document.body;
     const out = walk(root, 0);
     return out ? [out] : [];
-  });
+  }, quick);
 
   const lines: string[] = [];
 

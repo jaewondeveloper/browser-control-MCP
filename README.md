@@ -1,14 +1,14 @@
 # browser-control-mcp
 
-![](https://badge.mcpx.dev 'MCP') 
+![](https://badge.mcpx.dev 'MCP')
 
-에이전트가 **MCP 도구만**으로 브라우저를 조작합니다. 별도 `.mjs` 스크립트는 필요 없습니다.
+에이전트가 **MCP 도구만**으로 브라우저를 조작합니다. 웹사이트 개발·E2E 테스트 시 **BOT 커서**, **입력 잠금**, **파란 비네팅**으로 “지금 봇이 조작 중”임을 명확히 보여 줍니다.
 
-## 핵심
+## 핵심 (v0.6)
 
-- **BOT 커서 항상 표시**: 모든 페이지·이동·프레임 후 자동 주입, `BOT` 뱃지
-- **부드러운 이동**: 거리 기반 420–1600ms, ease-in-out quint
-- **클릭 모션**: 누르기 축소 + 파란 리플
+- **BOT 커서**: 모든 탭·이동 직후 즉시 표시
+- **개발/테스트 오버레이** (기본 ON): 화면 클릭 차단 + 창 가장자리 **파란 비네팅** + `BOT 조작 중` 배너
+- **빠른 확인**: `browser_ready`, `browser_snapshot` + `quick:true` (네이버 등 무거운 페이지)
 - **브라우저**: `chromium` | `chrome` | `edge` | `firefox`
 
 ## 설치
@@ -27,55 +27,74 @@ npm run build
     "browser-control": {
       "command": "node",
       "args": ["C:/Users/신 재원/Projects/browser-control-mcp/dist/index.js"],
-      "env": { "BROWSER_CONTROL_DEFAULT_BROWSER": "chromium" }
+      "env": {
+        "BROWSER_CONTROL_DEFAULT_BROWSER": "chromium",
+        "BROWSER_CONTROL_DEV_MODE": "1",
+        "BROWSER_CONTROL_LOCK_INPUT": "1",
+        "BROWSER_CONTROL_VIGNETTE": "1",
+        "BROWSER_CONTROL_FAST": "1",
+        "BROWSER_CONTROL_DEV_URL": "http://localhost:5173"
+      }
     }
   }
 }
 ```
 
-## 에이전트 워크플로 (스크립트 금지)
+`BROWSER_CONTROL_DEV_MODE=0` 으로 오버레이만 끌 수 있습니다.
 
-1. `browser_navigate` — `{ "url": "https://youtube.com" }`
-2. `browser_wait_for` — `{ "text": "Accept" }` 또는 쿠키 버튼
-3. `browser_snapshot` — ref 목록
-4. `browser_click` / `browser_click_selector` / `browser_click_text`
-5. `browser_type`, `browser_press_key`, `browser_scroll`, `browser_screenshot`
+## 웹사이트 만들 때 (로컬 미리보기)
 
-## MCP 도구 목록
+### 1) MCP로 테스트 (권장)
+
+```
+browser_dev_start          → localhost (기본 3000, env로 변경 가능)
+browser_ready              → DOM 준비 확인 (스냅샷보다 빠름)
+browser_snapshot quick:true
+browser_click / browser_fill / browser_screenshot
+browser_set_dev_mode       → lock·vignette·fast 토글
+```
+
+### 2) 프로젝트 HTML에 오버레이 스크립트
+
+`inject/agent-bot-overlay.js` 를 `public/` 에 복사한 뒤:
+
+```html
+<script src="/agent-bot-overlay.js" data-agent-bot-overlay></script>
+```
+
+`localhost` / `127.0.0.1` 에서만 자동 활성화됩니다. 콘솔에서 `AgentBotOverlay.enable()` / `disable()` 가능.
+
+## 에이전트 워크플로
+
+1. `browser_dev_start` 또는 `browser_navigate`
+2. **`browser_ready`** — 페이지 확인 (네이버 등에서 `browser_snapshot` 전에 사용)
+3. `browser_snapshot` + `"quick": true` — 가벼운 ref 트리
+4. `browser_click` / `browser_click_selector` / `browser_type`
+5. `browser_screenshot`
+
+## MCP 도구 (추가/변경)
 
 | 도구 | 용도 |
 |------|------|
-| `browser_navigate` | URL 이동 |
-| `browser_launch` | 빈 창 열기 |
-| `browser_snapshot` | ref 트리 |
-| `browser_click` | ref 클릭 |
-| `browser_click_selector` | CSS 클릭 |
-| `browser_click_text` | 텍스트 클릭 |
-| `browser_click_role` | role+name 클릭 |
-| `browser_click_xy` | 좌표 클릭 |
-| `browser_hover` / `browser_hover_selector` | 호버 |
-| `browser_drag` | 드래그 |
-| `browser_fill` / `browser_fill_ref` | 입력 |
-| `browser_type` | 키보드 입력 |
-| `browser_select_option` | 셀렉트 |
-| `browser_press_key` | 단축키 |
-| `browser_scroll` / `browser_scroll_to_ref` | 스크롤 |
-| `browser_wait` / `browser_wait_for` | 대기 |
-| `browser_evaluate` | JS 실행 |
-| `browser_back` / `browser_forward` / `browser_reload` | 탐색 |
-| `browser_get_page_info` | URL/제목 |
-| `browser_screenshot` | 캡처 |
-| `browser_close` | 종료 |
+| `browser_dev_start` | dev 오버레이 + localhost URL 열기 |
+| `browser_set_dev_mode` | 입력 잠금·비네팅·빠른 모션 설정 |
+| `browser_ready` | 빠른 로드/요소 확인 |
+| `browser_snapshot` | `quick:true` 로 경량 트리 |
+| `browser_navigate` | URL 이동 (commit 우선, 빠른 체감) |
 
-## 예: YouTube 재생 (도구만)
+기존 `browser_click`, `browser_type`, `browser_tabs` 등은 동일합니다.
 
-```
-browser_navigate → youtube.com
-browser_click_text → "Accept all" 또는 "모두 수락"
-browser_click_selector → "a#thumbnail[href*='watch']"  (또는 snapshot 후 browser_click)
-browser_click_selector → "button.ytp-large-play-button"
-```
+## 환경 변수
+
+| 변수 | 기본 | 설명 |
+|------|------|------|
+| `BROWSER_CONTROL_DEV_MODE` | `1` | 오버레이 전체 |
+| `BROWSER_CONTROL_LOCK_INPUT` | `1` | 마우스/터치 차단 |
+| `BROWSER_CONTROL_VIGNETTE` | `1` | 파란 가장자리 |
+| `BROWSER_CONTROL_FAST` | `1` | 빠른 커서·타이핑 |
+| `BROWSER_CONTROL_DEV_URL` | — | `browser_dev_start` 기본 URL |
+| `BROWSER_CONTROL_DEV_PORT` | `3000` | localhost 포트 |
 
 ## 커서 커스터마이즈
 
-`src/virtual-cursor.ts` — 속도·색·SVG·BOT 뱃지
+`src/virtual-cursor.ts` 의 SVG·색상·`BOT` 뱃지를 수정한 뒤 `npm run build` 하세요.

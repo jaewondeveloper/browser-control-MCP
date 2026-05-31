@@ -1,4 +1,6 @@
 import type { Page } from "playwright";
+import { ensureBotOverlay, applyBotOverlayToAllPages } from "./bot-overlay.js";
+import { getDevMode, setDevMode, typingDelayMs } from "./dev-mode.js";
 import { ensureCursorOnPage, spawnCursorImmediately } from "./virtual-cursor.js";
 import {
   botActAt,
@@ -11,6 +13,7 @@ import {
 import { captureAccessibilitySnapshot, getRefStore, resolveRefToCenter } from "./snapshot.js";
 import {
   ensureSession,
+  getSession,
   setActivePage,
   type LaunchOptions,
 } from "./browser-manager-session.js";
@@ -32,8 +35,11 @@ export async function navigate(url: string, options?: LaunchOptions) {
     setActivePage(page);
   }
   await spawnCursorImmediately(page);
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
-  await botEnterPage(page);
+  await ensureBotOverlay(page);
+  await page.goto(url, { waitUntil: "commit", timeout: 45_000 });
+  void page.waitForLoadState("domcontentloaded", { timeout: 10_000 }).catch(() => {});
+  await spawnCursorImmediately(page);
+  await ensureBotOverlay(page);
   return {
     finalUrl: page.url(),
     browser: s.kind,
@@ -59,10 +65,68 @@ export async function reload() {
   await botEnterPage(p);
 }
 
-export async function snapshot() {
+export async function snapshot(quick = false) {
   const p = await getPage();
-  await ensureCursorOnPage(p);
-  return captureAccessibilitySnapshot(p);
+  await spawnCursorImmediately(p);
+  return captureAccessibilitySnapshot(p, { quick });
+}
+
+export async function waitReady(opts?: {
+  selector?: string;
+  text?: string;
+  timeoutMs?: number;
+}) {
+  const p = await getPage();
+  const timeout = opts?.timeoutMs ?? 6000;
+  await Promise.all([
+    p.waitForLoadState("domcontentloaded", { timeout }).catch(() => {}),
+    opts?.selector
+      ? p.locator(opts.selector).first().waitFor({ state: "visible", timeout }).catch(() => {})
+      : Promise.resolve(),
+    opts?.text
+      ? p.getByText(opts.text, { exact: false }).first().waitFor({ state: "visible", timeout }).catch(() => {})
+      : Promise.resolve(),
+  ]);
+  await spawnCursorImmediately(p);
+  await ensureBotOverlay(p);
+  return { url: p.url(), title: await p.title() };
+}
+
+export async function configureDevMode(opts: {
+  enabled?: boolean;
+  lockInput?: boolean;
+  vignette?: boolean;
+  fast?: boolean;
+}) {
+  const cfg = setDevMode(opts);
+  const s = getSession();
+  if (s) {
+    const pages = s.context.pages().filter((pg) => !pg.isClosed());
+    await applyBotOverlayToAllPages(pages);
+    await Promise.all(
+      pages.map((pg) =>
+        pg.evaluate((fast) => {
+          window.__agentFastMotion = fast;
+        }, cfg.fast && cfg.enabled)
+      )
+    );
+  }
+  return cfg;
+}
+
+export async function devStart(url?: string, port = 3000) {
+  setDevMode({ enabled: true, lockInput: true, vignette: true, fast: true });
+  await ensureSession({ headless: false });
+  const target =
+    url ??
+    process.env.BROWSER_CONTROL_DEV_URL ??
+    `http://localhost:${process.env.BROWSER_CONTROL_DEV_PORT ?? port}`;
+  const r = await navigate(target.startsWith("http") ? target : `http://${target}`);
+  return { ...r, devUrl: target, devMode: getDevMode() };
+}
+
+export function getDevModeStatus() {
+  return getDevMode();
 }
 
 export async function getPageInfo() {
@@ -214,9 +278,9 @@ export async function fillRef(ref: string, value: string) {
   await loc.fill(value);
 }
 
-export async function typeText(text: string, submit = false, delayMs = 28) {
+export async function typeText(text: string, submit = false, delayMs?: number) {
   const p = await getPage();
-  await ensureCursorOnPage(p);
+  await spawnCursorImmediately(p);
   const focused = await p.evaluate(() => {
     const el = document.activeElement;
     if (!el || el === document.body) return null;
@@ -228,9 +292,7 @@ export async function typeText(text: string, submit = false, delayMs = 28) {
     const c = await viewportCenter(p);
     await botMoveTo(p, c.x, c.y);
   }
-  await ensureCursorOnPage(p);
-  await p.keyboard.type(text, { delay: Math.max(40, delayMs) });
-  await ensureCursorOnPage(p);
+  await p.keyboard.type(text, { delay: typingDelayMs(delayMs) });
   if (submit) await p.keyboard.press("Enter");
 }
 

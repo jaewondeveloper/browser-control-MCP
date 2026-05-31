@@ -4,7 +4,12 @@
       "command": "node",
       "args": ["C:/Users/신 재원/Projects/browser-control-mcp/dist/index.js"],
       "env": {
-        "BROWSER_CONTROL_DEFAULT_BROWSER": "chromium"
+        "BROWSER_CONTROL_DEFAULT_BROWSER": "chromium",
+        "BROWSER_CONTROL_DEV_MODE": "1",
+        "BROWSER_CONTROL_LOCK_INPUT": "1",
+        "BROWSER_CONTROL_VIGNETTE": "1",
+        "BROWSER_CONTROL_FAST": "1",
+        "BROWSER_CONTROL_DEV_URL": "http://localhost:5173"
       }
     }
   }

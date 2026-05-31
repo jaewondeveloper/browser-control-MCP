@@ -1,3 +1,6 @@
+import { ensureBotOverlay } from "./bot-overlay.js";
+import { isFastMotion, moveDurationScale } from "./dev-mode.js";
+
 /**
  * BOT cursor + click target ring — high visibility on YouTube/SPA sites.
  */
@@ -169,7 +172,13 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   }
 
   function calcDuration(dist, override) {
-    if (override > 0) return Math.max(80, Math.min(420, override));
+    const FAST = !!window.__agentFastMotion;
+    if (override > 0) {
+      const cap = FAST ? 220 : 420;
+      const floor = FAST ? 40 : 80;
+      return Math.max(floor, Math.min(cap, override));
+    }
+    if (FAST) return Math.max(50, Math.min(200, 28 + dist * 0.1));
     return Math.max(120, Math.min(420, 60 + dist * 0.18));
   }
 
@@ -213,7 +222,8 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     if (dist > 10) await moveTo(x, y);
     root.classList.add("pressing");
     playClickRipple(x + 4, y + 4);
-    await new Promise((r) => setTimeout(r, 55));
+    const pressMs = window.__agentFastMotion ? 28 : 55;
+    await new Promise((r) => setTimeout(r, pressMs));
     root.classList.remove("pressing");
     setTimeout(hideTarget, 500);
   }
@@ -273,10 +283,15 @@ export function moveDurationForDistance(
   toY: number,
   overrideMs?: number
 ): number {
-  if (overrideMs !== undefined) return Math.max(80, Math.min(420, overrideMs));
+  const scale = moveDurationScale();
+  if (overrideMs !== undefined) {
+    const ms = overrideMs * scale;
+    return Math.max(isFastMotion() ? 40 : 80, Math.min(isFastMotion() ? 220 : 420, ms));
+  }
   const dist = Math.hypot(toX - fromX, toY - fromY);
-  if (dist < 40) return 80;
-  return Math.max(120, Math.min(420, 60 + dist * 0.18));
+  if (dist < 40) return isFastMotion() ? 45 : 80;
+  const base = 60 + dist * 0.18;
+  return Math.max(isFastMotion() ? 50 : 120, Math.min(isFastMotion() ? 200 : 420, base * scale));
 }
 
 /** Show BOT cursor immediately — new tab/window, no wait for full load */
@@ -288,6 +303,9 @@ export async function spawnCursorImmediately(page: import("playwright").Page): P
     : { x: vp.width * 0.42, y: vp.height * 0.38 };
 
   try {
+    await page.evaluate((fast) => {
+      window.__agentFastMotion = fast;
+    }, isFastMotion());
     await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT);
     await page.evaluate(
       ({ x, y }) => {
@@ -296,6 +314,7 @@ export async function spawnCursorImmediately(page: import("playwright").Page): P
       },
       pos
     );
+    await ensureBotOverlay(page);
   } catch {
     /* page not ready yet — domcontentloaded handler will retry */
   }
@@ -405,5 +424,6 @@ declare global {
       getPosition: () => { x: number; y: number };
     };
     __agentCursorGuardActive?: boolean;
+    __agentFastMotion?: boolean;
   }
 }

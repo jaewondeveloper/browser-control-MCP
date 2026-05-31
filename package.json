@@ -1,6 +1,6 @@
 {
   "name": "browser-control-mcp",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "MCP server for browser automation with visible virtual cursor and click animations",
   "type": "module",
   "bin": {
@@ -13,6 +13,10 @@
     "prepare": "npm run build",
     "install:browsers": "playwright install chromium firefox"
   },
+  "files": [
+    "dist",
+    "inject"
+  ],
   "engines": {
     "node": ">=20"
   },

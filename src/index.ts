@@ -10,15 +10,20 @@ const browserKindSchema = z.enum(["chromium", "chrome", "edge", "firefox"]);
 const AGENT_INSTRUCTIONS = `You control a real browser ONLY via browser_* MCP tools below.
 NEVER create or run .mjs/.js helper scripts in the project — all automation goes through these tools.
 
-Workflow:
-1. browser_navigate (or browser_launch) — opens a visible window; blue BOT cursor is always on screen.
-2. browser_snapshot — get element refs, then browser_click / browser_fill_ref / browser_hover.
-3. Or use browser_click_selector, browser_click_text, browser_click_role without snapshot.
-4. browser_wait / browser_wait_for when pages load slowly.
-5. browser_screenshot to verify state.
-6. Links that open a **new tab** are auto-detected — focus switches to the new tab. Use browser_tabs to list/switch manually.
+Dev / website testing (default ON):
+- Blue edge vignette + "BOT 조작 중" banner + input lock (user cannot click the page).
+- browser_dev_start — open localhost dev server URL with dev mode preset.
+- browser_set_dev_mode — toggle lock, vignette, fast motion.
+- browser_ready — fast "page is usable" check (prefer over full snapshot on heavy sites like Naver).
+- browser_snapshot quick:true — smaller ref tree for faster confirmation.
 
-The virtual cursor moves smoothly to every target before click/type. Every click shows press + ripple animation.`;
+Workflow:
+1. browser_dev_start or browser_navigate — visible window; BOT cursor + dev overlay immediately.
+2. browser_ready — confirm DOM ready (optional selector/text).
+3. browser_snapshot quick:true first; full snapshot only when needed.
+4. browser_click / browser_click_selector / browser_click_text / browser_fill_ref.
+5. browser_screenshot to verify.
+6. New tabs auto-focus; browser_tabs to list/switch.`;
 
 function clickReply(label: string, tabNote?: string) {
   const extra = tabNote ? `\n${tabNote}` : "";
@@ -28,7 +33,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.5.1",
+    version: "0.6.0",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -48,7 +53,14 @@ server.tool(
   { browser: browserKindSchema.optional() },
   async (args) => {
     const { kind, label } = await act.launchSession({ browser: args.browser, headless: false });
-    return { content: [{ type: "text", text: `Launched ${label} (${kind}). BOT cursor active.` }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Launched ${label} (${kind}). BOT cursor + dev overlay (input lock, blue vignette).`,
+        },
+      ],
+    };
   }
 );
 
@@ -134,11 +146,69 @@ server.tool(
 
 server.tool(
   "browser_snapshot",
-  "Page tree with refs for browser_click / browser_fill_ref / browser_hover / browser_scroll_to_ref.",
-  {},
-  async () => {
-    const yaml = await act.snapshot();
+  "Page tree with refs. quick:true = faster, fewer nodes (use on Naver/heavy pages).",
+  { quick: z.boolean().optional() },
+  async (args) => {
+    const yaml = await act.snapshot(args.quick ?? false);
     return { content: [{ type: "text", text: yaml }] };
+  }
+);
+
+server.tool(
+  "browser_ready",
+  "Fast page-ready check (DOM + optional selector/text). Use before snapshot on slow portals.",
+  {
+    selector: z.string().optional(),
+    text: z.string().optional(),
+    timeoutMs: z.number().optional(),
+  },
+  async (args) => {
+    const r = await act.waitReady(args);
+    return { content: [{ type: "text", text: `Ready: ${r.title}\n${r.url}` }] };
+  }
+);
+
+server.tool(
+  "browser_dev_start",
+  "Website dev/test: dev overlay + open URL (default http://localhost:3000).",
+  {
+    url: z.string().optional(),
+    port: z.number().int().optional(),
+    browser: browserKindSchema.optional(),
+  },
+  async (args) => {
+    if (args.browser) await act.launchSession({ browser: args.browser, headless: false });
+    const r = await act.devStart(args.url, args.port ?? 3000);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Dev session: ${r.devUrl}\n${r.label}\nOverlay: lock=${r.devMode.lockInput} vignette=${r.devMode.vignette} fast=${r.devMode.fast}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "browser_set_dev_mode",
+  "Toggle dev overlay: input lock, blue vignette, fast BOT motion.",
+  {
+    enabled: z.boolean().optional(),
+    lockInput: z.boolean().optional(),
+    vignette: z.boolean().optional(),
+    fast: z.boolean().optional(),
+  },
+  async (args) => {
+    const cfg = await act.configureDevMode(args);
+    return {
+      content: [
+        {
+          type: "text",
+          text: `devMode: enabled=${cfg.enabled} lock=${cfg.lockInput} vignette=${cfg.vignette} fast=${cfg.fast}`,
+        },
+      ],
+    };
   }
 );
 
@@ -300,7 +370,7 @@ server.tool(
 
 server.tool(
   "browser_type",
-  "Type text character-by-character; cursor on field. submit=true presses Enter. delayMs=90 default.",
+  "Type text; cursor on field. submit=true presses Enter. delayMs optional (fast mode ~14ms/char).",
   {
     text: z.string(),
     submit: z.boolean().optional(),
@@ -388,7 +458,7 @@ server.tool("browser_close", "Close browser.", {}, async () => {
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("browser-control-mcp v0.3 — BOT cursor always on");
+  console.error("browser-control-mcp v0.6 — BOT cursor + dev overlay");
 }
 
 main().catch((err) => {
