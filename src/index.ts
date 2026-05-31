@@ -33,7 +33,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.6.0",
+    version: "0.6.1",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );

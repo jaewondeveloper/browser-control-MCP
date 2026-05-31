@@ -2,13 +2,12 @@ import { ensureBotOverlay } from "./bot-overlay.js";
 import { isFastMotion, moveDurationScale } from "./dev-mode.js";
 
 /**
- * BOT cursor + click target ring — high visibility on YouTube/SPA sites.
+ * BOT cursor overlay — blue pointer + BOT badge (classic design).
  */
 export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 (function () {
   const CURSOR_ID = "__agent_virtual_cursor__";
   const STYLE_ID = "__agent_virtual_cursor_style__";
-  const TARGET_ID = "__agent_click_target__";
   const RIPPLE_CLASS = "__agent_click_ripple__";
   const POS_KEY = "__agent_cursor_pos__";
 
@@ -40,7 +39,7 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 
   document.getElementById(STYLE_ID)?.remove();
   document.getElementById(CURSOR_ID)?.remove();
-  document.getElementById(TARGET_ID)?.remove();
+  document.getElementById("__agent_click_target__")?.remove();
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -49,75 +48,50 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
       position: fixed !important;
       left: 0 !important;
       top: 0 !important;
-      width: 44px !important;
-      height: 44px !important;
+      width: 32px !important;
+      height: 32px !important;
       pointer-events: none !important;
       z-index: 2147483647 !important;
       opacity: 1 !important;
       visibility: visible !important;
       display: block !important;
-      filter: drop-shadow(0 0 6px #000) drop-shadow(0 0 12px #ffeb3b);
+      will-change: transform;
+      filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35));
     }
     #\${CURSOR_ID} .pointer {
       width: 100%;
       height: 100%;
-      transform-origin: 6px 6px;
-      animation: __agent_cursor_pulse__ 1.2s ease-in-out infinite;
-    }
-    @keyframes __agent_cursor_pulse__ {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.08); }
+      transform-origin: 4px 4px;
+      transition: transform 140ms cubic-bezier(0.33, 1, 0.68, 1);
     }
     #\${CURSOR_ID}.pressing .pointer {
-      transform: scale(0.75) !important;
-      animation: none;
+      transform: scale(0.8) !important;
     }
     #\${CURSOR_ID} .bot-badge {
       position: absolute;
-      left: 26px;
-      top: 22px;
-      font: 800 11px/1 system-ui, sans-serif;
-      color: #000;
-      background: #ffeb3b;
-      padding: 3px 6px;
+      left: 20px;
+      top: 18px;
+      font: 600 10px/1 system-ui, sans-serif;
+      color: #fff;
+      background: #2563eb;
+      padding: 2px 6px;
       border-radius: 4px;
-      border: 2px solid #000;
-    }
-    #\${TARGET_ID} {
-      position: fixed !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 72px !important;
-      height: 72px !important;
-      margin: -36px 0 0 -36px;
-      border: 4px dashed #ff5722 !important;
-      border-radius: 50% !important;
-      box-shadow: 0 0 0 6px rgba(255,87,34,0.35), inset 0 0 20px rgba(255,235,59,0.4) !important;
-      pointer-events: none !important;
-      z-index: 2147483646 !important;
-      display: none;
-      opacity: 1 !important;
-      animation: __agent_target_pulse__ 0.7s ease-in-out infinite;
-    }
-    #\${TARGET_ID}.visible { display: block !important; }
-    @keyframes __agent_target_pulse__ {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.12); }
+      box-shadow: 0 1px 4px rgba(0,0,0,0.2);
     }
     .\${RIPPLE_CLASS} {
       position: fixed;
-      width: 56px;
-      height: 56px;
-      margin: -28px 0 0 -28px;
+      width: 50px;
+      height: 50px;
+      margin: -25px 0 0 -25px;
       border-radius: 50%;
       pointer-events: none;
-      z-index: 2147483645;
-      background: radial-gradient(circle, rgba(255,235,59,0.9) 0%, transparent 70%);
-      animation: __agent_ripple__ 350ms ease-out forwards;
+      z-index: 2147483646;
+      background: radial-gradient(circle, rgba(37,99,235,0.45) 0%, transparent 70%);
+      animation: __agent_ripple__ 400ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
     }
     @keyframes __agent_ripple__ {
       from { transform: scale(0.2); opacity: 1; }
-      to { transform: scale(1.4); opacity: 0; }
+      to { transform: scale(1.35); opacity: 0; }
     }
   \`;
   (document.documentElement || document.body).appendChild(style);
@@ -126,15 +100,11 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   root.id = CURSOR_ID;
   root.innerHTML = \`
     <svg class="pointer" viewBox="0 0 24 24">
-      <path d="M5 3L19 12L11 13L9 21L5 3Z" fill="#ff1744" stroke="#fff" stroke-width="2"/>
+      <path d="M5 3L19 12L11 13L9 21L5 3Z" fill="#3B82F6" stroke="#1D4ED8" stroke-width="1.2"/>
     </svg>
     <span class="bot-badge">BOT</span>
   \`;
   (document.documentElement || document.body).appendChild(root);
-
-  const targetRing = document.createElement("div");
-  targetRing.id = TARGET_ID;
-  (document.documentElement || document.body).appendChild(targetRing);
 
   let animFrame = null;
   let moving = false;
@@ -156,14 +126,8 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     applyPos(x, y);
   }
 
-  function showTarget(x, y) {
-    targetRing.style.transform = "translate3d(" + Math.round(x) + "px," + Math.round(y) + "px,0)";
-    targetRing.classList.add("visible");
-  }
-
-  function hideTarget() {
-    targetRing.classList.remove("visible");
-  }
+  function showTarget() {}
+  function hideTarget() {}
 
   applyPos(currentX, currentY);
 
@@ -213,19 +177,17 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     ripple.style.left = x + "px";
     ripple.style.top = y + "px";
     (document.documentElement || document.body).appendChild(ripple);
-    setTimeout(() => ripple.remove(), 400);
+    setTimeout(() => ripple.remove(), 450);
   }
 
   async function pressAt(x, y) {
-    showTarget(x, y);
     const dist = Math.hypot(x - currentX, y - currentY);
-    if (dist > 10) await moveTo(x, y);
+    if (dist > 14) await moveTo(x, y);
     root.classList.add("pressing");
-    playClickRipple(x + 4, y + 4);
-    const pressMs = window.__agentFastMotion ? 28 : 55;
+    playClickRipple(x + 5, y + 5);
+    const pressMs = window.__agentFastMotion ? 90 : 130;
     await new Promise((r) => setTimeout(r, pressMs));
     root.classList.remove("pressing");
-    setTimeout(hideTarget, 500);
   }
 
   function show() {
@@ -340,14 +302,10 @@ export async function ensureCursorOnPage(page: import("playwright").Page): Promi
 
 export async function showClickTarget(
   page: import("playwright").Page,
-  x: number,
-  y: number
+  _x: number,
+  _y: number
 ): Promise<void> {
   await ensureCursorOnPage(page);
-  await page.evaluate(
-    ({ x, y }) => window.__agentVirtualCursor?.showTarget(x, y),
-    { x, y }
-  );
 }
 
 export async function getCursorPosition(
@@ -370,14 +328,12 @@ export async function botMoveTo(
   await spawnCursorImmediately(page);
   const from = await getCursorPosition(page);
   const duration = moveDurationForDistance(from.x, from.y, x, y, durationMs);
-  const showRing = Math.hypot(x - from.x, y - from.y) > 24;
 
   await page.evaluate(
-    async ({ x, y, duration, showRing }) => {
-      if (showRing) window.__agentVirtualCursor?.showTarget(x, y);
+    async ({ x, y, duration }) => {
       await window.__agentVirtualCursor?.moveTo(x, y, duration);
     },
-    { x, y, duration, showRing }
+    { x, y, duration }
   );
 
   await page.mouse.move(x, y);
