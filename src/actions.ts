@@ -34,7 +34,6 @@ import { browserKindLabel } from "./browsers.js";
 import { getActivePage } from "./tabs.js";
 
 async function getPage(): Promise<Page> {
-  armBotControl();
   await ensureSession({ headless: false });
   const p = getActivePage();
   if (!p) throw new Error("No active browser page");
