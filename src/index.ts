@@ -3,7 +3,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { BROWSER_CATALOG } from "./browsers.js";
+import { CURSOR_BUILD_ID } from "./cursor-build.js";
 import * as act from "./actions.js";
+
+const MCP_VERSION = "0.6.4";
 
 const browserKindSchema = z.enum(["chromium", "chrome", "edge", "firefox"]);
 
@@ -37,7 +40,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.6.3",
+    version: MCP_VERSION,
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -68,16 +71,25 @@ server.tool(
   }
 );
 
-server.tool("browser_status", "Active session URL and browser engine.", {}, async () => {
+server.tool("browser_status", "Active session URL, browser engine, MCP build id.", {}, async () => {
   const info = act.getSessionInfo();
-  if (!info.active) return { content: [{ type: "text", text: "No session. Call browser_navigate or browser_launch." }] };
+  if (!info.active) {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `MCP ${MCP_VERSION} | cursor build ${CURSOR_BUILD_ID}\nNo session. Call browser_navigate or browser_launch.`,
+        },
+      ],
+    };
+  }
   const tabs = await act.listBrowserTabs();
   const tabLines = tabs.map((t) => `  [${t.index}]${t.active ? " *" : ""} ${t.title || t.url}`).join("\n");
   return {
     content: [
       {
         type: "text",
-        text: `${info.label} (${info.kind})\nActive: ${info.url ?? "(blank)"}\nTabs (${info.tabCount ?? tabs.length}):\n${tabLines || "  (none)"}`,
+        text: `MCP ${MCP_VERSION} | cursor build ${CURSOR_BUILD_ID}\nSession cursor: ${info.cursorBuildId ?? "unknown"}\n${info.label} (${info.kind})\nActive: ${info.url ?? "(blank)"}\nTabs (${info.tabCount ?? tabs.length}):\n${tabLines || "  (none)"}`,
       },
     ],
   };
@@ -494,7 +506,7 @@ server.tool(
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("browser-control-mcp v0.6.3 — classic blue cursor (purge legacy)");
+  console.error(`browser-control-mcp v${MCP_VERSION} | cursor ${CURSOR_BUILD_ID}`);
 }
 
 main().catch((err) => {

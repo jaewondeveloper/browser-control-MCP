@@ -101,6 +101,7 @@ export function getSessionInfo() {
     label: browserKindLabel(session.kind),
     url: page && !page.isClosed() ? page.url() : undefined,
     tabCount,
+    cursorBuildId: session.cursorBuildId,
   };
 }
 

@@ -2,7 +2,7 @@
   "mcpServers": {
     "browser-control": {
       "command": "node",
-      "args": ["C:/Users/신 재원/Projects/browser-control-mcp/dist/index.js"],
+      "args": ["C:/Users/신 재원/Projects/browser-control-mcp/scripts/run-mcp.mjs"],
       "env": {
         "BROWSER_CONTROL_DEFAULT_BROWSER": "chromium",
         "BROWSER_CONTROL_DEV_MODE": "1",
