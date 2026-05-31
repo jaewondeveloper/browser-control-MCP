@@ -28,7 +28,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.4.1",
+    version: "0.5.0",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -307,7 +307,7 @@ server.tool(
     delayMs: z.number().optional(),
   },
   async (args) => {
-    await act.typeText(args.text, args.submit ?? false, args.delayMs ?? 90);
+    await act.typeText(args.text, args.submit ?? false, args.delayMs ?? 55);
     return { content: [{ type: "text", text: `Typed: ${args.text}` }] };
   }
 );

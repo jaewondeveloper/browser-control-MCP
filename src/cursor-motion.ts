@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright";
+import { highlightLocator, highlightPoint } from "./highlight.js";
 import { botMoveTo, botPressAt, ensureCursorOnPage } from "./virtual-cursor.js";
 import { adoptNewTabAfterAction } from "./tabs.js";
 
@@ -24,6 +25,7 @@ export async function botActAt(
   opts?: { click?: boolean; button?: "left" | "right" | "middle"; doubleClick?: boolean }
 ): Promise<BotActResult> {
   await ensureCursorOnPage(page);
+  await highlightPoint(page, x, y);
   await botMoveTo(page, x, y);
   if (!opts?.click) return { tabSwitched: false };
 
@@ -43,7 +45,7 @@ export async function botActAt(
     };
   }
 
-  const adopted = await adoptNewTabAfterAction(page, 3500);
+  const adopted = await adoptNewTabAfterAction(page, 2000);
   return { tabSwitched: adopted.switched, tabMessage: adopted.message };
 }
 
@@ -54,6 +56,7 @@ export async function botActOnLocator(
 ): Promise<{ x: number; y: number }> {
   await locator.first().waitFor({ state: "visible", timeout: 30_000 });
   await locator.first().scrollIntoViewIfNeeded().catch(() => {});
+  await highlightLocator(locator);
   const c = await centerOfLocator(locator);
   if (!c) throw new Error("Element not visible for cursor target");
   const result = await botActAt(page, c.x, c.y, opts);

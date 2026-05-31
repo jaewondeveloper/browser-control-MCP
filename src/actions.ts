@@ -214,7 +214,7 @@ export async function fillRef(ref: string, value: string) {
   await loc.fill(value);
 }
 
-export async function typeText(text: string, submit = false, delayMs = 90) {
+export async function typeText(text: string, submit = false, delayMs = 55) {
   const p = await getPage();
   await ensureCursorOnPage(p);
   const focused = await p.evaluate(() => {
