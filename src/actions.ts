@@ -1,8 +1,20 @@
 import type { Page } from "playwright";
-import { ensureBotOverlay, applyBotOverlayToAllPages } from "./bot-overlay.js";
-import { getDevMode, setDevMode, typingDelayMs } from "./dev-mode.js";
+import { setBotControlActive } from "./bot-control-state.js";
+import { ensureBotOverlay, applyBotOverlayToAllPages, releaseBotOverlayOnPage } from "./bot-overlay.js";
+import {
+  disableDevModeOverlays,
+  getDevMode,
+  resetDevModeFromEnv,
+  setDevMode,
+  typingDelayMs,
+} from "./dev-mode.js";
 import { CURSOR_BUILD_ID } from "./cursor-build.js";
-import { ensureCursorOnPage, refreshCursorOnContext, spawnCursorImmediately } from "./virtual-cursor.js";
+import {
+  ensureCursorOnPage,
+  hideCursorOnPage,
+  refreshCursorOnContext,
+  spawnCursorImmediately,
+} from "./virtual-cursor.js";
 import {
   botActAt,
   botActOnLocator,
@@ -22,13 +34,38 @@ import { browserKindLabel } from "./browsers.js";
 import { getActivePage } from "./tabs.js";
 
 async function getPage(): Promise<Page> {
+  armBotControl();
   await ensureSession({ headless: false });
   const p = getActivePage();
   if (!p) throw new Error("No active browser page");
   return p;
 }
 
+/** Turn on BOT cursor + dev overlay (vignette, input lock). */
+export function armBotControl(): void {
+  setBotControlActive(true);
+  resetDevModeFromEnv();
+}
+
+/** Remove cursor and vignette; keep browser open for manual use. */
+export async function releaseBrowserControl(): Promise<{ released: boolean; url?: string }> {
+  setBotControlActive(false);
+  disableDevModeOverlays();
+  const s = getSession();
+  if (!s) return { released: true };
+  for (const page of s.context.pages()) {
+    if (!page.isClosed()) {
+      await releaseBotOverlayOnPage(page);
+      await hideCursorOnPage(page);
+    }
+  }
+  const page = getActivePage();
+  const url = page && !page.isClosed() ? page.url() : undefined;
+  return { released: true, url };
+}
+
 export async function navigate(url: string, options?: LaunchOptions) {
+  armBotControl();
   const s = await ensureSession({ ...options, headless: options?.headless ?? false });
   let page = s.page;
   if (page.isClosed()) {

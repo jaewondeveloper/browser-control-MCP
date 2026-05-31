@@ -1,5 +1,6 @@
 import type { BrowserContext, Page } from "playwright";
 import { BOT_OVERLAY_INIT_SCRIPT, ensureBotOverlay } from "./bot-overlay.js";
+import { isBotControlActive } from "./bot-control-state.js";
 import {
   CURSOR_PURGE_SCRIPT,
   spawnCursorImmediately,
@@ -12,9 +13,11 @@ export function attachVirtualCursorToContext(context: BrowserContext): void {
   context.addInitScript(BOT_OVERLAY_INIT_SCRIPT);
 
   const wire = (page: Page): void => {
+    if (!isBotControlActive()) return;
     void spawnCursorImmediately(page);
     void ensureBotOverlay(page);
     page.on("domcontentloaded", () => {
+      if (!isBotControlActive()) return;
       void spawnCursorImmediately(page);
       void ensureBotOverlay(page);
     });

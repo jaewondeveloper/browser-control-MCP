@@ -1,3 +1,4 @@
+import { isBotControlActive } from "./bot-control-state.js";
 import { ensureBotOverlay } from "./bot-overlay.js";
 import { isFastMotion, moveDurationScale } from "./dev-mode.js";
 
@@ -220,6 +221,16 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 `;
 
 /** Strip legacy red/yellow cursor DOM before reinstall */
+export const CURSOR_HIDE_SCRIPT = `
+(() => {
+  document.getElementById("__agent_virtual_cursor__")?.remove();
+  document.getElementById("__agent_virtual_cursor_style__")?.remove();
+  document.getElementById("__agent_click_target__")?.remove();
+  document.querySelectorAll(".__agent_click_ripple__").forEach(function (el) { el.remove(); });
+  delete window.__agentVirtualCursor;
+})();
+`;
+
 export const CURSOR_PURGE_SCRIPT = `
 (() => {
   ["__agent_virtual_cursor__", "__agent_virtual_cursor_style__", "__agent_click_target__"].forEach(function (id) {
@@ -255,7 +266,16 @@ export const CURSOR_GUARD_BOOT = `
 })();
 `;
 
+export async function hideCursorOnPage(page: import("playwright").Page): Promise<void> {
+  try {
+    await page.evaluate(CURSOR_HIDE_SCRIPT);
+  } catch {
+    /* page closed */
+  }
+}
+
 export async function installCursorOnPage(page: import("playwright").Page): Promise<void> {
+  if (!isBotControlActive()) return;
   const vp = page.viewportSize() ?? { width: 1280, height: 800 };
   const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
   const pos = hasRecordedPosition()
@@ -303,6 +323,7 @@ export function moveDurationForDistance(
 
 /** Show BOT cursor immediately — always purge legacy red cursor first */
 export async function spawnCursorImmediately(page: import("playwright").Page): Promise<void> {
+  if (!isBotControlActive()) return;
   try {
     await installCursorOnPage(page);
     await ensureBotOverlay(page);

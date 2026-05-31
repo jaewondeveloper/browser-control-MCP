@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { isBotControlActive } from "./bot-control-state.js";
 import { getDevMode } from "./dev-mode.js";
 
 /** Input lock + blue edge vignette — injected on every page in dev mode */
@@ -118,6 +119,7 @@ export const BOT_OVERLAY_INIT_SCRIPT = `
 `;
 
 export async function ensureBotOverlay(page: Page): Promise<void> {
+  if (!isBotControlActive()) return;
   const cfg = getDevMode();
   if (!cfg.enabled) {
     await page
@@ -146,6 +148,20 @@ export async function ensureBotOverlay(page: Page): Promise<void> {
 
 export async function applyBotOverlayToAllPages(pages: Page[]): Promise<void> {
   await Promise.all(pages.map((p) => ensureBotOverlay(p)));
+}
+
+export const BOT_OVERLAY_RELEASE_SCRIPT = `
+(() => {
+  window.__agentBotOverlay?.disable?.();
+})();
+`;
+
+export async function releaseBotOverlayOnPage(page: Page): Promise<void> {
+  try {
+    await page.evaluate(BOT_OVERLAY_RELEASE_SCRIPT);
+  } catch {
+    /* page closed */
+  }
 }
 
 declare global {

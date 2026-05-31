@@ -27,6 +27,18 @@ export function setDevMode(partial: Partial<DevModeConfig>): DevModeConfig {
   return { ...state };
 }
 
+export function resetDevModeFromEnv(): DevModeConfig {
+  state.enabled = envFlag("BROWSER_CONTROL_DEV_MODE", true);
+  state.lockInput = envFlag("BROWSER_CONTROL_LOCK_INPUT", true);
+  state.vignette = envFlag("BROWSER_CONTROL_VIGNETTE", true);
+  state.fast = envFlag("BROWSER_CONTROL_FAST", true);
+  return { ...state };
+}
+
+export function disableDevModeOverlays(): DevModeConfig {
+  return setDevMode({ enabled: false, lockInput: false, vignette: false });
+}
+
 export function isFastMotion(): boolean {
   return state.enabled && state.fast;
 }

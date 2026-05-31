@@ -6,7 +6,7 @@ import { BROWSER_CATALOG } from "./browsers.js";
 import { CURSOR_BUILD_ID } from "./cursor-build.js";
 import * as act from "./actions.js";
 
-const MCP_VERSION = "0.6.4";
+const MCP_VERSION = "0.6.5";
 
 const browserKindSchema = z.enum(["chromium", "chrome", "edge", "firefox"]);
 
@@ -19,7 +19,11 @@ NEVER create or run .mjs/.js helper scripts — all automation goes through thes
 3. browser_snapshot (quick:true on heavy sites) — read the HTML/ref tree. Use refs from the "interactive (flat)" section for buttons/links.
 4. browser_click / browser_fill_ref / browser_hover — ONLY with refs from the latest snapshot (or browser_click_selector when ref unavailable).
 5. After each navigation or click that changes the page → browser_snapshot again, then pick new refs.
-6. When the task is finished → browser_close (MANDATORY — always close the browser window).
+6. When the task is finished → **browser_done** (MANDATORY for handoff).
+
+## End of task — user can use the page again
+- **browser_done** — removes BOT cursor + blue vignette + input lock. **Browser stays open** so the user can click/type normally. Use after "페이지 들어가줘", quick navigation, or any task where the user should take over.
+- **browser_close** — closes the browser window entirely. Use only when the user wants the window closed.
 
 ## FORBIDDEN unless the user explicitly asks
 - browser_screenshot — do NOT use for finding elements or verifying clicks. Use browser_snapshot + browser_get_page_info instead.
@@ -59,6 +63,7 @@ server.tool(
   "Open visible browser (BOT cursor always shown). browser=chromium|chrome|edge|firefox.",
   { browser: browserKindSchema.optional() },
   async (args) => {
+    act.armBotControl();
     const { kind, label } = await act.launchSession({ browser: args.browser, headless: false });
     return {
       content: [
@@ -485,7 +490,7 @@ server.tool(
 
 server.tool(
   "browser_close",
-  "Close browser window. REQUIRED when automation task is done.",
+  "Close browser window completely. Use browser_done instead if the user should keep using the page.",
   {},
   async () => {
     await act.closeSession();
@@ -494,12 +499,36 @@ server.tool(
 );
 
 server.tool(
-  "browser_done",
-  "Alias for browser_close — call when finished so the window is not left open.",
+  "browser_release",
+  "Same as browser_done — remove BOT cursor and vignette; user can interact; window stays open.",
   {},
   async () => {
-    await act.closeSession();
-    return { content: [{ type: "text", text: "Done. Browser closed." }] };
+    const r = await act.releaseBrowserControl();
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Released BOT control. Page is yours to use.${r.url ? `\n${r.url}` : ""}`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "browser_done",
+  "End BOT session: hide cursor + vignette, unlock input, keep browser open. Default after navigate/help tasks.",
+  {},
+  async () => {
+    const r = await act.releaseBrowserControl();
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Done. BOT overlay off — you can use the page.${r.url ? `\n${r.url}` : ""}`,
+        },
+      ],
+    };
   }
 );
 
