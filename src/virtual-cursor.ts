@@ -10,7 +10,7 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   const STYLE_ID = "__agent_virtual_cursor_style__";
   const RIPPLE_CLASS = "__agent_click_ripple__";
   const POS_KEY = "__agent_cursor_pos__";
-  const CURSOR_VER = "classic-blue-v2";
+  const CURSOR_VER = "classic-blue-v3";
 
   function loadPos() {
     try {
@@ -29,17 +29,11 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     } catch (e) {}
   }
 
-  const existingEl = document.getElementById(CURSOR_ID);
-  const upToDate = existingEl && existingEl.getAttribute("data-cursor-ver") === CURSOR_VER;
-  if (window.__agentVirtualCursor && upToDate) {
-    window.__agentVirtualCursor.show();
-    return;
-  }
-  if (window.__agentVirtualCursor) delete window.__agentVirtualCursor;
-
+  delete window.__agentVirtualCursor;
   document.getElementById(STYLE_ID)?.remove();
   document.getElementById(CURSOR_ID)?.remove();
   document.getElementById("__agent_click_target__")?.remove();
+  document.querySelectorAll(".__agent_click_ripple__").forEach(function (el) { el.remove(); });
 
   const style = document.createElement("style");
   style.id = STYLE_ID;
@@ -58,6 +52,11 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
       will-change: transform;
       filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35));
     }
+    #\${CURSOR_ID} .pointer path {
+      fill: #3B82F6 !important;
+      stroke: #1D4ED8 !important;
+      stroke-width: 1.2 !important;
+    }
     #\${CURSOR_ID} .pointer {
       width: 100%;
       height: 100%;
@@ -72,11 +71,12 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
       left: 20px;
       top: 18px;
       font: 600 10px/1 system-ui, sans-serif;
-      color: #fff;
-      background: #2563eb;
       padding: 2px 6px;
       border-radius: 4px;
       box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+      color: #fff !important;
+      background: #2563eb !important;
+      border: none !important;
     }
     .\${RIPPLE_CLASS} {
       position: fixed;
@@ -219,6 +219,17 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
 })();
 `;
 
+/** Strip legacy red/yellow cursor DOM before reinstall */
+export const CURSOR_PURGE_SCRIPT = `
+(() => {
+  ["__agent_virtual_cursor__", "__agent_virtual_cursor_style__", "__agent_click_target__"].forEach(function (id) {
+    document.getElementById(id)?.remove();
+  });
+  document.querySelectorAll(".__agent_click_ripple__").forEach(function (el) { el.remove(); });
+  delete window.__agentVirtualCursor;
+})();
+`;
+
 export const CURSOR_SHOW_SCRIPT = `
 (() => {
   window.__agentVirtualCursor?.show();
@@ -233,11 +244,44 @@ export const CURSOR_SHOW_SCRIPT = `
 
 export const CURSOR_GUARD_BOOT = `
 (() => {
-  if (!document.getElementById("__agent_virtual_cursor__")) return "need-install";
+  const el = document.getElementById("__agent_virtual_cursor__");
+  if (!el) return "need-install";
+  if (el.getAttribute("data-cursor-ver") !== "classic-blue-v3") return "stale";
+  const path = el.querySelector(".pointer path");
+  const fill = (path && path.getAttribute("fill")) || "";
+  if (/ff1744|ffeb3b|ff5722/i.test(fill)) return "stale";
   window.__agentVirtualCursor?.show();
   return "ok";
 })();
 `;
+
+export async function installCursorOnPage(page: import("playwright").Page): Promise<void> {
+  const vp = page.viewportSize() ?? { width: 1280, height: 800 };
+  const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
+  const pos = hasRecordedPosition()
+    ? getRecordedCursorPosition()
+    : { x: vp.width * 0.42, y: vp.height * 0.38 };
+
+  await page.evaluate((fast) => {
+    window.__agentFastMotion = fast;
+  }, isFastMotion());
+  await page.evaluate(CURSOR_PURGE_SCRIPT);
+  await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT);
+  await page.evaluate(
+    ({ x, y }) => {
+      window.__agentVirtualCursor?.setInstant(x, y);
+      window.__agentVirtualCursor?.show();
+    },
+    pos
+  );
+  await page.evaluate(CURSOR_SHOW_SCRIPT);
+}
+
+export async function refreshCursorOnContext(context: import("playwright").BrowserContext): Promise<void> {
+  for (const page of context.pages()) {
+    if (!page.isClosed()) await installCursorOnPage(page).catch(() => {});
+  }
+}
 
 export function moveDurationForDistance(
   fromX: number,
@@ -257,26 +301,10 @@ export function moveDurationForDistance(
   return Math.max(isFastMotion() ? 50 : 120, Math.min(isFastMotion() ? 200 : 420, base * scale));
 }
 
-/** Show BOT cursor immediately — new tab/window, no wait for full load */
+/** Show BOT cursor immediately — always purge legacy red cursor first */
 export async function spawnCursorImmediately(page: import("playwright").Page): Promise<void> {
-  const vp = page.viewportSize() ?? { width: 1280, height: 800 };
-  const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
-  const pos = hasRecordedPosition()
-    ? getRecordedCursorPosition()
-    : { x: vp.width * 0.42, y: vp.height * 0.38 };
-
   try {
-    await page.evaluate((fast) => {
-      window.__agentFastMotion = fast;
-    }, isFastMotion());
-    await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT);
-    await page.evaluate(
-      ({ x, y }) => {
-        window.__agentVirtualCursor?.setInstant(x, y);
-        window.__agentVirtualCursor?.show();
-      },
-      pos
-    );
+    await installCursorOnPage(page);
     await ensureBotOverlay(page);
   } catch {
     /* page not ready yet — domcontentloaded handler will retry */
@@ -284,27 +312,12 @@ export async function spawnCursorImmediately(page: import("playwright").Page): P
 }
 
 export async function ensureCursorOnPage(page: import("playwright").Page): Promise<void> {
-  const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
-
   const boot = await page.evaluate(CURSOR_GUARD_BOOT).catch(() => "need-install");
-  const stale = await page
-    .evaluate(() => {
-      const el = document.getElementById("__agent_virtual_cursor__");
-      return !el || el.getAttribute("data-cursor-ver") !== "classic-blue-v2";
-    })
-    .catch(() => true);
-
-  if (boot !== "ok" || stale) {
-    await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT).catch(() => {});
-    if (hasRecordedPosition()) {
-      const pos = getRecordedCursorPosition();
-      await page
-        .evaluate(({ x, y }) => window.__agentVirtualCursor?.setInstant(x, y), pos)
-        .catch(() => {});
-    }
+  if (boot !== "ok") {
+    await installCursorOnPage(page).catch(() => {});
+  } else {
+    await page.evaluate(CURSOR_SHOW_SCRIPT).catch(() => {});
   }
-
-  await page.evaluate(CURSOR_SHOW_SCRIPT).catch(() => {});
 }
 
 export async function showClickTarget(

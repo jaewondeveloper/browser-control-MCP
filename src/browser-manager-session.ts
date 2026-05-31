@@ -5,15 +5,17 @@ import {
   parseBrowserKind,
   type BrowserKind,
 } from "./browsers.js";
+import { CURSOR_BUILD_ID } from "./cursor-build.js";
 import { attachVirtualCursorToContext } from "./cursor-host.js";
 import { attachTabWatcher } from "./tabs.js";
-import { spawnCursorImmediately } from "./virtual-cursor.js";
+import { refreshCursorOnContext, spawnCursorImmediately } from "./virtual-cursor.js";
 
 export type BrowserSession = {
   browser: Browser;
   context: BrowserContext;
   page: Page;
   kind: BrowserKind;
+  cursorBuildId: string;
 };
 
 let session: BrowserSession | null = null;
@@ -32,6 +34,7 @@ function needsRelaunch(requested: BrowserKind): boolean {
     return true;
   }
   if (session.kind !== requested) return true;
+  if (session.cursorBuildId !== CURSOR_BUILD_ID) return true;
   const pages = session.context.pages().filter((p) => !p.isClosed());
   if (pages.length === 0) return true;
   return false;
@@ -64,7 +67,7 @@ export async function ensureSession(options: LaunchOptions = {}): Promise<Browse
       const open = session!.context.pages().filter((p) => !p.isClosed());
       if (open.length) session!.page = open[open.length - 1]!;
     }
-    void spawnCursorImmediately(session!.page);
+    void refreshCursorOnContext(session!.context);
     return session!;
   }
 
@@ -79,7 +82,7 @@ export async function ensureSession(options: LaunchOptions = {}): Promise<Browse
   });
 
   const { context, page } = await createContext(browser);
-  session = { browser, context, page, kind };
+  session = { browser, context, page, kind, cursorBuildId: CURSOR_BUILD_ID };
   return session;
 }
 

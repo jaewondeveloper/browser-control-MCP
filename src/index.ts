@@ -37,7 +37,7 @@ function clickReply(label: string, tabNote?: string) {
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.6.2",
+    version: "0.6.3",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -455,6 +455,23 @@ server.tool(
 );
 
 server.tool(
+  "browser_refresh_cursor",
+  "Force reinstall blue BOT cursor (use if you still see red/yellow legacy cursor).",
+  {},
+  async () => {
+    const r = await act.refreshBrowserCursor();
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Cursor refreshed (${r.cursorBuildId}). Blue pointer + blue BOT badge.`,
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
   "browser_close",
   "Close browser window. REQUIRED when automation task is done.",
   {},
@@ -477,7 +494,7 @@ server.tool(
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("browser-control-mcp v0.6.2 — snapshot-first, blue cursor");
+  console.error("browser-control-mcp v0.6.3 — classic blue cursor (purge legacy)");
 }
 
 main().catch((err) => {

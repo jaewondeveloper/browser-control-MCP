@@ -1,7 +1,8 @@
 import type { Page } from "playwright";
 import { ensureBotOverlay, applyBotOverlayToAllPages } from "./bot-overlay.js";
 import { getDevMode, setDevMode, typingDelayMs } from "./dev-mode.js";
-import { ensureCursorOnPage, spawnCursorImmediately } from "./virtual-cursor.js";
+import { CURSOR_BUILD_ID } from "./cursor-build.js";
+import { ensureCursorOnPage, refreshCursorOnContext, spawnCursorImmediately } from "./virtual-cursor.js";
 import {
   botActAt,
   botActOnLocator,
@@ -90,6 +91,19 @@ export async function waitReady(opts?: {
   await spawnCursorImmediately(p);
   await ensureBotOverlay(p);
   return { url: p.url(), title: await p.title() };
+}
+
+export async function refreshBrowserCursor() {
+  const s = getSession();
+  if (!s) {
+    await ensureSession({ headless: false });
+    const s2 = getSession();
+    if (!s2) throw new Error("No browser session");
+    await refreshCursorOnContext(s2.context);
+    return { cursorBuildId: CURSOR_BUILD_ID };
+  }
+  await refreshCursorOnContext(s.context);
+  return { cursorBuildId: CURSOR_BUILD_ID };
 }
 
 export async function configureDevMode(opts: {
