@@ -25,9 +25,14 @@ export type LaunchOptions = {
 
 function needsRelaunch(requested: BrowserKind): boolean {
   if (!session) return true;
+  if (!session.browser.isConnected()) {
+    session = null;
+    return true;
+  }
   if (session.kind !== requested) return true;
-  const pages = session.context.pages();
-  return pages.length === 0 || pages[0].isClosed();
+  const pages = session.context.pages().filter((p) => !p.isClosed());
+  if (pages.length === 0) return true;
+  return false;
 }
 
 async function createContext(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
@@ -51,7 +56,8 @@ export async function ensureSession(options: LaunchOptions = {}): Promise<Browse
   preferredBrowser = kind;
 
   if (!needsRelaunch(kind)) {
-    session!.page = session!.context.pages()[0];
+    const open = session!.context.pages().find((p) => !p.isClosed());
+    if (open) session!.page = open;
     return session!;
   }
 
@@ -95,6 +101,10 @@ export async function closeSession(): Promise<void> {
 
 export function getSession(): BrowserSession | null {
   return session;
+}
+
+export function setActivePage(page: Page): void {
+  if (session) session.page = page;
 }
 
 export function getPreferredBrowser(): BrowserKind {
