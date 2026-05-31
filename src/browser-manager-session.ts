@@ -7,6 +7,7 @@ import {
 } from "./browsers.js";
 import { attachVirtualCursorToContext } from "./cursor-host.js";
 import { attachTabWatcher } from "./tabs.js";
+import { spawnCursorImmediately } from "./virtual-cursor.js";
 
 export type BrowserSession = {
   browser: Browser;
@@ -45,6 +46,7 @@ async function createContext(browser: Browser): Promise<{ context: BrowserContex
   attachVirtualCursorToContext(context);
   attachTabWatcher(context);
   const page = await context.newPage();
+  await spawnCursorImmediately(page);
   return { context, page };
 }
 
@@ -62,6 +64,7 @@ export async function ensureSession(options: LaunchOptions = {}): Promise<Browse
       const open = session!.context.pages().filter((p) => !p.isClosed());
       if (open.length) session!.page = open[open.length - 1]!;
     }
+    void spawnCursorImmediately(session!.page);
     return session!;
   }
 

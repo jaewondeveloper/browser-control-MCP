@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from "playwright";
 import { setActivePage, getSession } from "./browser-manager-session.js";
-import { ensureCursorOnPage } from "./virtual-cursor.js";
+import { ensureCursorOnPage, spawnCursorImmediately } from "./virtual-cursor.js";
 
 export type TabInfo = {
   index: number;
@@ -9,7 +9,6 @@ export type TabInfo = {
   active: boolean;
 };
 
-/** When true, new tabs/popups become the active page automatically */
 export let autoFocusNewTabs = true;
 
 function openPages(context: BrowserContext): Page[] {
@@ -31,25 +30,25 @@ export function getActivePage(): Page | null {
 export async function focusPage(page: Page): Promise<void> {
   setActivePage(page);
   await page.bringToFront().catch(() => {});
-  await ensureCursorOnPage(page);
+  await spawnCursorImmediately(page);
+  void page.waitForLoadState("domcontentloaded", { timeout: 20_000 }).then(() => ensureCursorOnPage(page));
 }
 
 export function attachTabWatcher(context: BrowserContext): void {
-  context.on("page", (newPage) => {
-    void (async () => {
-      await newPage.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => {});
-      if (autoFocusNewTabs) await focusPage(newPage);
-    })();
-  });
+  const onNewPage = (newPage: Page): void => {
+    if (autoFocusNewTabs) setActivePage(newPage);
+    void newPage.bringToFront().catch(() => {});
+    void spawnCursorImmediately(newPage);
+    newPage.on("domcontentloaded", () => void spawnCursorImmediately(newPage));
+  };
+
+  context.on("page", onNewPage);
+  for (const page of context.pages()) onNewPage(page);
 }
 
-/**
- * After a click, adopt a popup / new tab if one opened.
- * Returns the page agents should use next.
- */
 export async function adoptNewTabAfterAction(
   page: Page,
-  timeoutMs = 5000
+  timeoutMs = 900
 ): Promise<{ page: Page; switched: boolean; message?: string }> {
   const context = page.context();
   const countBefore = openPages(context).length;
@@ -58,16 +57,18 @@ export async function adoptNewTabAfterAction(
   try {
     newPage = await context.waitForEvent("page", { timeout: timeoutMs });
   } catch {
-    /* same-tab navigation or no popup */
+    /* same-tab navigation */
   }
 
   if (newPage && !newPage.isClosed()) {
-    await newPage.waitForLoadState("domcontentloaded", { timeout: 30_000 }).catch(() => {});
-    await focusPage(newPage);
+    setActivePage(newPage);
+    await newPage.bringToFront().catch(() => {});
+    await spawnCursorImmediately(newPage);
+    void newPage.waitForLoadState("domcontentloaded", { timeout: 20_000 }).catch(() => {});
     return {
       page: newPage,
       switched: true,
-      message: `New tab opened → now active (${newPage.url()})`,
+      message: `New tab → cursor on (${newPage.url()})`,
     };
   }
 
@@ -75,12 +76,13 @@ export async function adoptNewTabAfterAction(
   if (pages.length > countBefore) {
     const latest = pages[pages.length - 1]!;
     if (latest !== page) {
-      await latest.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
-      await focusPage(latest);
+      setActivePage(latest);
+      await latest.bringToFront().catch(() => {});
+      await spawnCursorImmediately(latest);
       return {
         page: latest,
         switched: true,
-        message: `Switched to new tab (${latest.url()})`,
+        message: `Switched tab (${latest.url()})`,
       };
     }
   }
@@ -105,9 +107,11 @@ export async function listTabsWithTitles(): Promise<TabInfo[]> {
   const s = getSession();
   if (!s) return tabs;
   const pages = openPages(s.context);
-  for (let i = 0; i < pages.length; i++) {
-    tabs[i]!.title = await pages[i]!.title().catch(() => "");
-  }
+  await Promise.all(
+    pages.map(async (p, i) => {
+      tabs[i]!.title = await p.title().catch(() => "");
+    })
+  );
   return tabs;
 }
 

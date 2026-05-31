@@ -169,8 +169,8 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
   }
 
   function calcDuration(dist, override) {
-    if (override > 0) return Math.max(200, Math.min(900, override));
-    return Math.max(280, Math.min(900, 180 + dist * 0.42));
+    if (override > 0) return Math.max(80, Math.min(420, override));
+    return Math.max(120, Math.min(420, 60 + dist * 0.18));
   }
 
   function moveTo(x, y, durationMs) {
@@ -213,7 +213,7 @@ export const VIRTUAL_CURSOR_INIT_SCRIPT = `
     if (dist > 10) await moveTo(x, y);
     root.classList.add("pressing");
     playClickRipple(x + 4, y + 4);
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 55));
     root.classList.remove("pressing");
     setTimeout(hideTarget, 500);
   }
@@ -273,9 +273,32 @@ export function moveDurationForDistance(
   toY: number,
   overrideMs?: number
 ): number {
-  if (overrideMs !== undefined) return Math.max(200, Math.min(900, overrideMs));
+  if (overrideMs !== undefined) return Math.max(80, Math.min(420, overrideMs));
   const dist = Math.hypot(toX - fromX, toY - fromY);
-  return Math.max(280, Math.min(900, 180 + dist * 0.42));
+  if (dist < 40) return 80;
+  return Math.max(120, Math.min(420, 60 + dist * 0.18));
+}
+
+/** Show BOT cursor immediately — new tab/window, no wait for full load */
+export async function spawnCursorImmediately(page: import("playwright").Page): Promise<void> {
+  const vp = page.viewportSize() ?? { width: 1280, height: 800 };
+  const { getRecordedCursorPosition, hasRecordedPosition } = await import("./cursor-state.js");
+  const pos = hasRecordedPosition()
+    ? getRecordedCursorPosition()
+    : { x: vp.width * 0.42, y: vp.height * 0.38 };
+
+  try {
+    await page.evaluate(VIRTUAL_CURSOR_INIT_SCRIPT);
+    await page.evaluate(
+      ({ x, y }) => {
+        window.__agentVirtualCursor?.setInstant(x, y);
+        window.__agentVirtualCursor?.show();
+      },
+      pos
+    );
+  } catch {
+    /* page not ready yet — domcontentloaded handler will retry */
+  }
 }
 
 export async function ensureCursorOnPage(page: import("playwright").Page): Promise<void> {
@@ -318,27 +341,27 @@ export async function getCursorPosition(
   });
 }
 
-/** Fast move: virtual cursor animates; real mouse jumps once at end */
+/** Fast move: short glide + instant Playwright mouse at end */
 export async function botMoveTo(
   page: import("playwright").Page,
   x: number,
   y: number,
   durationMs?: number
 ): Promise<void> {
-  await ensureCursorOnPage(page);
+  await spawnCursorImmediately(page);
   const from = await getCursorPosition(page);
   const duration = moveDurationForDistance(from.x, from.y, x, y, durationMs);
+  const showRing = Math.hypot(x - from.x, y - from.y) > 24;
 
   await page.evaluate(
-    async ({ x, y, duration }) => {
-      window.__agentVirtualCursor?.showTarget(x, y);
+    async ({ x, y, duration, showRing }) => {
+      if (showRing) window.__agentVirtualCursor?.showTarget(x, y);
       await window.__agentVirtualCursor?.moveTo(x, y, duration);
     },
-    { x, y, duration }
+    { x, y, duration, showRing }
   );
 
   await page.mouse.move(x, y);
-
   const { recordCursorPosition } = await import("./cursor-state.js");
   recordCursorPosition(x, y);
 }

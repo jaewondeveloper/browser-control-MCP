@@ -1,6 +1,6 @@
 import type { Locator, Page } from "playwright";
 import { highlightLocator, highlightPoint } from "./highlight.js";
-import { botMoveTo, botPressAt, ensureCursorOnPage } from "./virtual-cursor.js";
+import { botMoveTo, botPressAt, spawnCursorImmediately } from "./virtual-cursor.js";
 import { adoptNewTabAfterAction } from "./tabs.js";
 
 export { botMoveTo };
@@ -24,13 +24,13 @@ export async function botActAt(
   y: number,
   opts?: { click?: boolean; button?: "left" | "right" | "middle"; doubleClick?: boolean }
 ): Promise<BotActResult> {
-  await ensureCursorOnPage(page);
-  await highlightPoint(page, x, y);
+  await spawnCursorImmediately(page);
+  highlightPoint(page, x, y);
   await botMoveTo(page, x, y);
   if (!opts?.click) return { tabSwitched: false };
 
   const context = page.context();
-  const newTabPromise = context.waitForEvent("page", { timeout: 5000 }).catch(() => null);
+  const newTabPromise = context.waitForEvent("page", { timeout: 1200 }).catch(() => null);
 
   await botPressAt(page, x, y);
   if (opts.doubleClick) await page.mouse.dblclick(x, y, { button: opts.button ?? "left" });
@@ -38,14 +38,14 @@ export async function botActAt(
 
   const early = await newTabPromise;
   if (early && !early.isClosed()) {
-    const adopted = await adoptNewTabAfterAction(page, 1500);
+    const adopted = await adoptNewTabAfterAction(page, 400);
     return {
       tabSwitched: true,
       tabMessage: adopted.message ?? `New tab active: ${early.url()}`,
     };
   }
 
-  const adopted = await adoptNewTabAfterAction(page, 2000);
+  const adopted = await adoptNewTabAfterAction(page, 700);
   return { tabSwitched: adopted.switched, tabMessage: adopted.message };
 }
 
@@ -54,20 +54,18 @@ export async function botActOnLocator(
   locator: Locator,
   opts?: { click?: boolean; button?: "left" | "right" | "middle"; doubleClick?: boolean }
 ): Promise<{ x: number; y: number }> {
-  await locator.first().waitFor({ state: "visible", timeout: 30_000 });
+  await locator.first().waitFor({ state: "visible", timeout: 20_000 });
   await locator.first().scrollIntoViewIfNeeded().catch(() => {});
-  await highlightLocator(locator);
+  highlightLocator(locator);
   const c = await centerOfLocator(locator);
   if (!c) throw new Error("Element not visible for cursor target");
   const result = await botActAt(page, c.x, c.y, opts);
   if (result.tabMessage) {
-    // eslint-disable-next-line no-console
     console.error(`[browser-control] ${result.tabMessage}`);
   }
   return c;
 }
 
-/** Page loaded — keep cursor where it was; only ensure overlay exists */
 export async function botEnterPage(page: Page): Promise<void> {
-  await ensureCursorOnPage(page);
+  await spawnCursorImmediately(page);
 }
