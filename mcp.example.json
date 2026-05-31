@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "browser-control": {
+      "command": "node",
+      "args": ["C:/Users/신 재원/Projects/browser-control-mcp/dist/index.js"],
+      "env": {
+        "BROWSER_CONTROL_DEFAULT_BROWSER": "chromium"
+      }
+    }
+  }
+}
