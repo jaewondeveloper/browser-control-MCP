@@ -6,6 +6,7 @@ import {
   type BrowserKind,
 } from "./browsers.js";
 import { attachVirtualCursorToContext } from "./cursor-host.js";
+import { attachTabWatcher } from "./tabs.js";
 
 export type BrowserSession = {
   browser: Browser;
@@ -42,6 +43,7 @@ async function createContext(browser: Browser): Promise<{ context: BrowserContex
   });
 
   attachVirtualCursorToContext(context);
+  attachTabWatcher(context);
   const page = await context.newPage();
   return { context, page };
 }
@@ -56,8 +58,10 @@ export async function ensureSession(options: LaunchOptions = {}): Promise<Browse
   preferredBrowser = kind;
 
   if (!needsRelaunch(kind)) {
-    const open = session!.context.pages().find((p) => !p.isClosed());
-    if (open) session!.page = open;
+    if (session!.page.isClosed()) {
+      const open = session!.context.pages().filter((p) => !p.isClosed());
+      if (open.length) session!.page = open[open.length - 1]!;
+    }
     return session!;
   }
 
@@ -83,12 +87,14 @@ export async function launchSession(options: LaunchOptions = {}) {
 
 export function getSessionInfo() {
   if (!session) return { active: false as const };
-  const page = session.context.pages()[0];
+  const page = session.page;
+  const tabCount = session.context.pages().filter((p) => !p.isClosed()).length;
   return {
     active: true as const,
     kind: session.kind,
     label: browserKindLabel(session.kind),
     url: page && !page.isClosed() ? page.url() : undefined,
+    tabCount,
   };
 }
 

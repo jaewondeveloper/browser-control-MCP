@@ -15,9 +15,13 @@ import {
   type LaunchOptions,
 } from "./browser-manager-session.js";
 import { browserKindLabel } from "./browsers.js";
+import { getActivePage } from "./tabs.js";
 
 async function getPage(): Promise<Page> {
-  return (await ensureSession({ headless: false })).page;
+  await ensureSession({ headless: false });
+  const p = getActivePage();
+  if (!p) throw new Error("No active browser page");
+  return p;
 }
 
 export async function navigate(url: string, options?: LaunchOptions) {
@@ -90,30 +94,32 @@ export async function waitFor(opts: {
 export async function clickRef(
   ref: string,
   opts?: { offsetX?: number; offsetY?: number; button?: "left" | "right" | "middle"; doubleClick?: boolean }
-) {
+): Promise<string | undefined> {
   const p = await getPage();
   const center = await resolveRefToCenter(p, ref);
   if (!center) throw new Error(`Unknown ref "${ref}". Run browser_snapshot first.`);
-  await botActAt(p, center.x + (opts?.offsetX ?? 0), center.y + (opts?.offsetY ?? 0), {
+  const r = await botActAt(p, center.x + (opts?.offsetX ?? 0), center.y + (opts?.offsetY ?? 0), {
     click: true,
     button: opts?.button,
     doubleClick: opts?.doubleClick,
   });
+  return r.tabMessage;
 }
 
 export async function clickSelector(
   selector: string,
   opts?: { offsetX?: number; offsetY?: number; button?: "left" | "right" | "middle"; doubleClick?: boolean }
-) {
+): Promise<string | undefined> {
   const p = await getPage();
   const loc = p.locator(selector).first();
   const c = await centerOfLocator(loc);
   if (!c) throw new Error(`Element not visible: ${selector}`);
-  await botActAt(p, c.x + (opts?.offsetX ?? 0), c.y + (opts?.offsetY ?? 0), {
+  const r = await botActAt(p, c.x + (opts?.offsetX ?? 0), c.y + (opts?.offsetY ?? 0), {
     click: true,
     button: opts?.button,
     doubleClick: opts?.doubleClick,
   });
+  return r.tabMessage;
 }
 
 export async function clickRole(
@@ -143,9 +149,21 @@ export async function clickAt(
   y: number,
   button: "left" | "right" | "middle" = "left",
   doubleClick = false
-) {
+): Promise<string | undefined> {
   const p = await getPage();
-  await botActAt(p, x, y, { click: true, button, doubleClick });
+  const r = await botActAt(p, x, y, { click: true, button, doubleClick });
+  return r.tabMessage;
+}
+
+export async function listBrowserTabs() {
+  const { listTabsWithTitles } = await import("./tabs.js");
+  return listTabsWithTitles();
+}
+
+export async function switchBrowserTab(opts: { index?: number; urlIncludes?: string }) {
+  const { switchToTab, switchToTabMatching } = await import("./tabs.js");
+  if (opts.urlIncludes) return switchToTabMatching(opts.urlIncludes);
+  return switchToTab(opts.index ?? 0);
 }
 
 export async function hoverRef(ref: string) {

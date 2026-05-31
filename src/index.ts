@@ -16,13 +16,19 @@ Workflow:
 3. Or use browser_click_selector, browser_click_text, browser_click_role without snapshot.
 4. browser_wait / browser_wait_for when pages load slowly.
 5. browser_screenshot to verify state.
+6. Links that open a **new tab** are auto-detected — focus switches to the new tab. Use browser_tabs to list/switch manually.
 
 The virtual cursor moves smoothly to every target before click/type. Every click shows press + ripple animation.`;
+
+function clickReply(label: string, tabNote?: string) {
+  const extra = tabNote ? `\n${tabNote}` : "";
+  return { content: [{ type: "text" as const, text: `${label}${extra}` }] };
+}
 
 const server = new McpServer(
   {
     name: "browser-control-mcp",
-    version: "0.3.0",
+    version: "0.4.0",
   },
   { instructions: AGENT_INSTRUCTIONS }
 );
@@ -49,10 +55,40 @@ server.tool(
 server.tool("browser_status", "Active session URL and browser engine.", {}, async () => {
   const info = act.getSessionInfo();
   if (!info.active) return { content: [{ type: "text", text: "No session. Call browser_navigate or browser_launch." }] };
+  const tabs = await act.listBrowserTabs();
+  const tabLines = tabs.map((t) => `  [${t.index}]${t.active ? " *" : ""} ${t.title || t.url}`).join("\n");
   return {
-    content: [{ type: "text", text: `${info.label} (${info.kind})\n${info.url ?? "(blank)"}` }],
+    content: [
+      {
+        type: "text",
+        text: `${info.label} (${info.kind})\nActive: ${info.url ?? "(blank)"}\nTabs (${info.tabCount ?? tabs.length}):\n${tabLines || "  (none)"}`,
+      },
+    ],
   };
 });
+
+server.tool(
+  "browser_tabs",
+  "List open tabs or switch active tab. New-tab links are auto-focused after clicks.",
+  {
+    action: z.enum(["list", "switch"]),
+    index: z.number().int().min(0).optional(),
+    urlIncludes: z.string().optional(),
+  },
+  async (args) => {
+    if (args.action === "list") {
+      const tabs = await act.listBrowserTabs();
+      const lines = tabs.map(
+        (t) => `[${t.index}]${t.active ? " (active)" : ""} ${t.title}\n    ${t.url}`
+      );
+      return { content: [{ type: "text", text: lines.join("\n") || "No tabs" }] };
+    }
+    const tab = await act.switchBrowserTab({ index: args.index, urlIncludes: args.urlIncludes });
+    return {
+      content: [{ type: "text", text: `Active tab [${tab.index}]: ${tab.title}\n${tab.url}` }],
+    };
+  }
+);
 
 server.tool(
   "browser_navigate",
@@ -142,8 +178,8 @@ server.tool(
     doubleClick: z.boolean().optional(),
   },
   async (args) => {
-    await act.clickRef(args.ref, args);
-    return { content: [{ type: "text", text: `Clicked ${args.ref}` }] };
+    const note = await act.clickRef(args.ref, args);
+    return clickReply(`Clicked ${args.ref}`, note);
   }
 );
 
@@ -158,8 +194,8 @@ server.tool(
     doubleClick: z.boolean().optional(),
   },
   async (args) => {
-    await act.clickSelector(args.selector, args);
-    return { content: [{ type: "text", text: `Clicked ${args.selector}` }] };
+    const note = await act.clickSelector(args.selector, args);
+    return clickReply(`Clicked ${args.selector}`, note);
   }
 );
 
@@ -202,8 +238,8 @@ server.tool(
     doubleClick: z.boolean().optional(),
   },
   async (args) => {
-    await act.clickAt(args.x, args.y, args.button, args.doubleClick);
-    return { content: [{ type: "text", text: `Clicked (${args.x},${args.y})` }] };
+    const note = await act.clickAt(args.x, args.y, args.button, args.doubleClick);
+    return clickReply(`Clicked (${args.x},${args.y})`, note);
   }
 );
 
